@@ -74,7 +74,7 @@ export function registerAuthRoutes(app: App) {
       prompt: "consent",
       access_type: "offline",
     });
-    return { url };
+    return reply.redirect(url);
   });
 
   app.fastify.get(
@@ -107,4 +107,3 @@ export function registerAuthRoutes(app: App) {
     },
   );
 }
-
