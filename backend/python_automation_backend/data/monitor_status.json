@@ -1,0 +1,16 @@
+{
+  "updated_at": "2026-03-28T10:39:45.483104+00:00",
+  "quota": {},
+  "channels": {},
+  "logs": [
+    {
+      "time": "2026-03-28T10:38:10.417200+00:00",
+      "message": "EXIT_REASON=NO_DRIVE_FOLDER"
+    },
+    {
+      "time": "2026-03-28T10:39:45.483079+00:00",
+      "message": "EXIT_REASON=NO_DRIVE_FOLDER"
+    }
+  ],
+  "notification": null
+}

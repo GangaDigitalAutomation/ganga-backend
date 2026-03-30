@@ -1,0 +1,4 @@
+This folder is a production backend integration for Ganga Digital Automation.
+
+Do NOT delete or move this folder without creating a full backup first.
+Do NOT rename module paths unless you also update all references and workflows.

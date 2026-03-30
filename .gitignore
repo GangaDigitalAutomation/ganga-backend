@@ -12,6 +12,13 @@ dist/
 web-build/
 .natively/
 
+# Runtime/generated data
+backend/data/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
 # Local runtime data and temp artifacts
 *.log
 *.out
@@ -39,5 +46,4 @@ ios/
 .DS_Store
 Thumbs.db
 
-# Lock files to avoid noisy machine-specific changes
 pnpm-lock.yaml
