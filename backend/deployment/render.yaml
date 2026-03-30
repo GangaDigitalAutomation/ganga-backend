@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ganga-api
+    env: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health/full
+    autoDeploy: true
+  - type: worker
+    name: ganga-worker
+    env: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:worker
+    autoDeploy: true
+  - type: worker
+    name: ganga-scheduler
+    env: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:scheduler
+    autoDeploy: true

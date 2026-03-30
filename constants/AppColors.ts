@@ -1,0 +1,32 @@
+export const COLORS = {
+  background: '#0A0A0F',
+  surface: '#13131A',
+  surfaceSecondary: '#1C1C26',
+  surfaceTertiary: '#242433',
+  text: '#F0F0FF',
+  textSecondary: '#9090B0',
+  textTertiary: '#5A5A7A',
+  primary: '#8B5CF6',
+  primaryMuted: 'rgba(139,92,246,0.15)',
+  accent: '#EC4899',
+  accentMuted: 'rgba(236,72,153,0.15)',
+  blue: '#3B82F6',
+  blueMuted: 'rgba(59,130,246,0.15)',
+  success: '#10B981',
+  successMuted: 'rgba(16,185,129,0.15)',
+  warning: '#F59E0B',
+  warningMuted: 'rgba(245,158,11,0.15)',
+  danger: '#EF4444',
+  dangerMuted: 'rgba(239,68,68,0.15)',
+  border: 'rgba(139,92,246,0.12)',
+  divider: 'rgba(255,255,255,0.06)',
+  glow: 'rgba(139,92,246,0.3)',
+};
+
+export const glassCard = {
+  backgroundColor: 'rgba(19,19,26,0.85)' as const,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: 'rgba(139,92,246,0.15)' as const,
+  padding: 16,
+};

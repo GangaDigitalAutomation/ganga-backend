@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ganga Deploy Setup Assistant</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    .wrap { max-width: 760px; margin: 40px auto; padding: 24px; background: #111827; border-radius: 12px; border: 1px solid #334155; }
+    h1 { margin-top: 0; }
+    label { display:block; margin: 14px 0 6px; font-weight: 700; }
+    input, textarea { width: 100%; border: 1px solid #475569; background: #0b1220; color: #e2e8f0; padding: 10px; border-radius: 8px; }
+    button { margin-top: 14px; padding: 10px 14px; border: 0; border-radius: 8px; background: #22c55e; color: #06210f; font-weight: 700; cursor: pointer; }
+    .note { color: #94a3b8; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>One-Time Setup Assistant</h1>
+    <p class="note">Fill only these 3 fields. Everything else is auto-safe by default.</p>
+
+    <label>Google Client ID</label>
+    <input id="clientId" placeholder="xxxxx.apps.googleusercontent.com" />
+
+    <label>Google Client Secret</label>
+    <input id="clientSecret" placeholder="GOCSPX-..." />
+
+    <label>Allowlisted Emails (comma-separated)</label>
+    <input id="allowlist" placeholder="you@example.com,team@example.com" />
+
+    <button onclick="buildEnv()">Generate Env</button>
+
+    <label>Copy this into Railway Variables</label>
+    <textarea id="output" rows="20" readonly></textarea>
+  </div>
+
+  <script>
+    function buildEnv() {
+      const clientId = document.getElementById('clientId').value.trim();
+      const clientSecret = document.getElementById('clientSecret').value.trim();
+      const allowlist = document.getElementById('allowlist').value.trim();
+
+      const env = [
+        'NODE_ENV=production',
+        'HOST=0.0.0.0',
+        'PORT=8080',
+        'LOG_LEVEL=info',
+        'SIMULATION_MODE=true',
+        'AUTH_REQUIRED=true',
+        'GOOGLE_CLIENT_ID=' + clientId,
+        'GOOGLE_CLIENT_SECRET=' + clientSecret,
+        'GOOGLE_REDIRECT_URI=https://YOUR_BACKEND_DOMAIN/api/auth/google/callback',
+        'ALLOWED_EMAILS=' + allowlist,
+        'JWT_SECRET=replace-with-strong-secret',
+        'TOKEN_ENCRYPTION_KEY=replace-with-32-plus-char-secret',
+        'YOUTUBE_DAILY_QUOTA_PER_CHANNEL=8000',
+        'YOUTUBE_UPLOAD_QUOTA_UNITS=1600',
+        'QUEUE_POLL_MS=1000',
+        'WORKER_CONCURRENCY=2',
+        'SCHEDULER_TICK_MS=15000'
+      ].join('\n');
+
+      document.getElementById('output').value = env;
+    }
+  </script>
+</body>
+</html>

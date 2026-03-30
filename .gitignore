@@ -1,0 +1,43 @@
+node_modules/
+**/node_modules/
+
+.git/
+.expo/
+.vercel/
+
+# Build outputs
+build/
+dist/
+**/dist/
+web-build/
+.natively/
+
+# Local runtime data and temp artifacts
+*.log
+*.out
+*.err
+*.pid
+*.tmp
+*.temp
+.tmp/
+.tmpdist/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Platform folders
+android/
+ios/
+
+# OS / misc
+.DS_Store
+Thumbs.db
+
+# Lock files to avoid noisy machine-specific changes
+pnpm-lock.yaml

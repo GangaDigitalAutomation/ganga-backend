@@ -1,0 +1,11 @@
+{
+  "pythonBackend": {
+    "enabled": true,
+    "root": "F:/Ganga Digital Automation/backend/python_automation_backend",
+    "entry": "backend/main.py",
+    "venvPython": "F:/Ganga Digital Automation/backend/python_automation_backend/.venv/Scripts/python.exe",
+    "runCommand": "\"F:/Ganga Digital Automation/backend/python_automation_backend/.venv/Scripts/python.exe\" \"F:/Ganga Digital Automation/backend/python_automation_backend/backend/main.py\"",
+    "monitorStatusFile": "F:/Ganga Digital Automation/backend/python_automation_backend/data/monitor_status.json",
+    "communicationMode": "polling-file"
+  }
+}

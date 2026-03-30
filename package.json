@@ -1,0 +1,63 @@
+{
+    "name": "ganga-digital-automation",
+    "version": "2.0.2",
+    "author": "Ganga Digital",
+    "description": "Ganga Digital Automation application",
+    "main": "electron/main.js",
+    "scripts": {
+        "start": "set ELECTRON_RUN_AS_NODE=&& electron .",
+        "dev": "set ELECTRON_RUN_AS_NODE=&& electron .",
+        "build": "node -e \"console.log('Build step complete')\"",
+        "lint": "eslint .",
+        "dist": "node scripts/dist-safe.js",
+        "dist:raw": "electron-builder --win",
+        "automation:run": "node automation/upload.js"
+    },
+    "dependencies": {
+        "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
+        "electron-updater": "^6.8.3",
+        "googleapis": "^140.0.0"
+    },
+    "devDependencies": {
+        "electron": "^32.0.0",
+        "electron-builder": "^26.8.1",
+        "electron-winstaller": "^5.4.0"
+    },
+    "resolutions": {
+        "@expo/prebuild-config": "latest"
+    },
+    "private": true,
+    "build": {
+        "forceCodeSigning": false,
+        "compression": "store",
+        "electronVersion": "32.0.0",
+        "npmRebuild": false,
+        "appId": "com.gangadigital.automation",
+        "productName": "Ganga Digital Automation",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "electron/**/*",
+            "renderer/**/*",
+            "assets/**/*",
+            "package.json"
+        ],
+        "win": {
+            "signAndEditExecutable": false,
+            "target": [
+                "nsis"
+            ],
+            "icon": "assets/logo.png"
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "Ganga Digital Automation",
+            "differentialPackage": false
+        }
+    }
+}

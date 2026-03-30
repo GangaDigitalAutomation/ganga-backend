@@ -1,0 +1,3 @@
+web: node dist/index.js
+worker: node dist/worker.js
+scheduler: node dist/scheduler.js

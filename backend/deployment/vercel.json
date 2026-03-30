@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/renderer/index.html" },
+    { "source": "/app.js", "destination": "/renderer/app.js" },
+    { "source": "/styles.css", "destination": "/renderer/styles.css" }
+  ]
+}
