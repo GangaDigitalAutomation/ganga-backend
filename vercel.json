@@ -3,7 +3,10 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/", "destination": "/renderer/index.html" },
+    { "source": "/dashboard", "destination": "/renderer/index.html" },
+    { "source": "/login", "destination": "/renderer/index.html" },
     { "source": "/app.js", "destination": "/renderer/app.js" },
+    { "source": "/lib/api.js", "destination": "/renderer/lib/api.js" },
     { "source": "/styles.css", "destination": "/renderer/styles.css" },
     { "source": "/setup-assistant", "destination": "/deployment/setup-assistant.html" }
   ],

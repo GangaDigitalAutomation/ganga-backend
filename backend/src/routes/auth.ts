@@ -103,7 +103,8 @@ export function registerAuthRoutes(app: App) {
         return reply.status(403).send({ error: "Email is not allowlisted" });
       }
       const token = signSession(app, { sub: user.id, email: user.email, is_allowed: true });
-      return { success: true, token, user };
+      const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/+$/, "");
+      return reply.redirect(`${frontendUrl}/dashboard?token=${encodeURIComponent(token)}`);
     },
   );
 }

@@ -1,2041 +1,342 @@
+import { api, API_BASE_URL } from "/lib/api.js";
+
 const state = {
-  data: null,
-  slots: [],
-  channelSlotPlans: {},
-  selectedScheduleChannelId: '',
-  automationStatus: {
-    automationRunning: false,
-    uploadInProgress: false,
-  },
-  driveFolders: [],
-  driveFolderData: {},
-  tagChips: [],
-  autoScheduleEnabled: false,
-  selectedSlotKey: '',
-  appMeta: null,
-  updater: null,
-  seenUploadedVideoIds: new Set(),
-  uploadSeenInitialized: false,
-  systemLogKeys: new Set(),
-  uploadSummary: {
-    totalVideos: 0,
-    completedVideos: 0,
-    totalBytes: 0,
-    uploadedBytes: 0,
-  },
+  channels: [],
+  videos: [],
+  schedules: [],
 };
 
-let driveAutoRefreshTimer = null;
+const nodes = {
+  loginScreen: document.getElementById("login-screen"),
+  appScreen: document.getElementById("app-screen"),
+  loginBtn: document.getElementById("google-login-btn"),
+  logoutBtn: document.getElementById("logout-btn"),
+  userEmail: document.getElementById("user-email"),
+  backendUrl: document.getElementById("backend-url"),
+  message: document.getElementById("global-message"),
 
-const pages = document.querySelectorAll('.page');
-const navLinks = document.querySelectorAll('.nav-link');
+  statChannels: document.getElementById("stat-channels"),
+  statVideos: document.getElementById("stat-videos"),
+  statScheduled: document.getElementById("stat-scheduled"),
+  statConnected: document.getElementById("stat-connected"),
+  automationStatus: document.getElementById("automation-status"),
 
-navLinks.forEach((link) => {
-  link.addEventListener('click', () => {
-    navLinks.forEach((btn) => btn.classList.remove('active'));
-    link.classList.add('active');
-    const page = link.dataset.page;
-    pages.forEach((section) => {
-      section.classList.toggle('active', section.id === `page-${page}`);
-    });
-    if (page === 'library') {
-      fetchDriveVideos();
-      startDriveAutoRefresh();
-    }
-  });
-});
+  channelsList: document.getElementById("channels-list"),
+  channelName: document.getElementById("channel-name"),
+  channelClientId: document.getElementById("channel-client-id"),
+  channelClientSecret: document.getElementById("channel-client-secret"),
+  createChannelBtn: document.getElementById("create-channel-btn"),
 
-function isLibraryPageActive() {
-  return document.getElementById('page-library')?.classList.contains('active');
+  uploadTitle: document.getElementById("upload-title"),
+  uploadDescription: document.getElementById("upload-description"),
+  uploadTags: document.getElementById("upload-tags"),
+  uploadFile: document.getElementById("upload-file"),
+  uploadBtn: document.getElementById("upload-btn"),
+  uploadResult: document.getElementById("upload-result"),
+
+  scheduleChannel: document.getElementById("schedule-channel"),
+  scheduleVideo: document.getElementById("schedule-video"),
+  scheduleDatetime: document.getElementById("schedule-datetime"),
+  addScheduleBtn: document.getElementById("add-schedule-btn"),
+  schedulesList: document.getElementById("schedules-list"),
+
+  startAutomationBtn: document.getElementById("start-automation-btn"),
+  stopAutomationBtn: document.getElementById("stop-automation-btn"),
+  refreshBtn: document.getElementById("refresh-btn"),
+};
+
+function showMessage(message, isError = false) {
+  nodes.message.textContent = message || "";
+  nodes.message.style.color = isError ? "#fb7185" : "#7dd3fc";
 }
 
-function startDriveAutoRefresh() {
-  if (driveAutoRefreshTimer) return;
-  driveAutoRefreshTimer = setInterval(() => {
-    if (!isLibraryPageActive()) return;
-    fetchDriveVideos({ silent: true });
-  }, 10000);
+function getToken() {
+  return window.localStorage.getItem("auth_token") || "";
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function setToken(token) {
+  if (!token) return;
+  window.localStorage.setItem("auth_token", token);
 }
 
-function formatBytes(bytes) {
-  const value = Number(bytes || 0);
-  if (!Number.isFinite(value) || value <= 0) return '--';
-  if (value < 1024) return `${value} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let size = value / 1024;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+function clearToken() {
+  window.localStorage.removeItem("auth_token");
 }
 
-function parseTitleLines(raw) {
-  return String(raw || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function parseTagsFromString(raw) {
-  return String(raw || '')
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-function renderTagChips() {
-  const list = document.getElementById('tags-chip-list');
-  const hiddenInput = document.getElementById('global-tags-input');
-  if (!list || !hiddenInput) return;
-  list.innerHTML = '';
-  state.tagChips.forEach((tag, index) => {
-    const chip = document.createElement('span');
-    chip.className = 'tag-chip';
-    chip.innerHTML = `
-      <span>${escapeHtml(tag)}</span>
-      <button type="button" data-action="remove-tag" data-index="${index}" aria-label="Remove tag">x</button>
-    `;
-    chip.querySelector('[data-action="remove-tag"]')?.addEventListener('click', () => {
-      state.tagChips.splice(index, 1);
-      renderTagChips();
-    });
-    list.appendChild(chip);
-  });
-  hiddenInput.value = state.tagChips.join(', ');
-}
-
-function extractDriveFolderId(link) {
-  const value = String(link || '').trim();
-  if (!value) return '';
-  const fromPath = value.match(/\/drive\/folders\/([a-zA-Z0-9_-]+)/)?.[1]
-    || value.match(/\/folders\/([a-zA-Z0-9_-]+)/)?.[1];
-  if (fromPath) return fromPath;
+function decodeJwtPayload(token) {
+  if (!token || token.split(".").length < 2) return null;
   try {
-    const url = new URL(value);
-    return url.searchParams.get('id') || '';
-  } catch (error) {
-    return '';
-  }
-}
-
-function addLog(message) {
-  const normalized = normalizeSystemLogMessage(message);
-  if (!normalized) return;
-  const list = document.getElementById('log-list');
-  if (!list) return;
-  if (state.systemLogKeys.has(normalized)) return;
-  state.systemLogKeys.add(normalized);
-  const item = document.createElement('div');
-  item.className = 'log-entry';
-  item.textContent = `[${new Date().toLocaleTimeString()}] ${normalized}`;
-  list.prepend(item);
-}
-
-function normalizeSystemLogMessage(message) {
-  const text = String(message || '').trim();
-  if (!text) return '';
-  if (text.startsWith('✅') || text.startsWith('❌')) {
-    return text;
-  }
-  if (text.includes('[UPLOAD_COMPLETE]')) {
-    return `✅ ${text.replace('[UPLOAD_COMPLETE]', '').trim()} uploaded successfully`;
-  }
-  if (text.includes('[UPLOAD_FAILED]')) {
-    return `❌ ${text.replace('[UPLOAD_FAILED]', '').trim()}`;
-  }
-  return '';
-}
-
-function toLocalDateKey(value = new Date()) {
-  const date = new Date(value);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function isUploadedToday(video) {
-  const stamp = String(video?.uploaded_at || '').trim();
-  if (!stamp) return false;
-  return toLocalDateKey(stamp) === toLocalDateKey(new Date());
-}
-
-function formatTopDate(value) {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  const d = String(date.getDate()).padStart(2, '0');
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const y = String(date.getFullYear());
-  return `${d}-${m}-${y}`;
-}
-
-function formatTopTime(value) {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function renderAutomationTopSection() {
-  const startRow = document.getElementById('automation-top-start-row');
-  const runningRow = document.getElementById('automation-top-running-row');
-  const stoppedRow = document.getElementById('automation-top-stopped-row');
-  if (!startRow || !runningRow || !stoppedRow) return;
-
-  const settings = state.data?.settings || {};
-  const running = Boolean(settings.automationRunning);
-  const startedAt = settings.automationStartedAt || '';
-  const stoppedAt = settings.automationStoppedAt || '';
-
-  document.getElementById('automation-start-date').textContent = formatTopDate(startedAt);
-  document.getElementById('automation-start-time').textContent = formatTopTime(startedAt);
-  document.getElementById('automation-stop-date').textContent = formatTopDate(stoppedAt);
-  document.getElementById('automation-stop-time').textContent = formatTopTime(stoppedAt);
-
-  if (running) {
-    startRow.classList.add('hidden');
-    runningRow.classList.remove('hidden');
-    stoppedRow.classList.add('hidden');
-    return;
-  }
-
-  startRow.classList.remove('hidden');
-  runningRow.classList.add('hidden');
-  stoppedRow.classList.toggle('hidden', !stoppedAt);
-}
-
-function renderChannelUploadTracker() {
-  const wrap = document.getElementById('channel-upload-tracker');
-  if (!wrap) return;
-  const channels = Array.isArray(state.data?.channels) ? state.data.channels : [];
-  const selected = channels.filter(isChannelSelected);
-  const active = selected.length ? selected : channels;
-  const perDay = Math.max(1, Math.min(5, Number(state.data?.settings?.videosPerDay || 1)));
-  const videos = Array.isArray(state.data?.videos) ? state.data.videos : [];
-  const uploadedToday = videos.filter((video) => video.status === 'uploaded' && isUploadedToday(video));
-  const counts = new Map();
-  uploadedToday.forEach((video) => {
-    const key = String(video.uploaded_channel_id || '').trim();
-    if (!key) return;
-    counts.set(key, Number(counts.get(key) || 0) + 1);
-  });
-
-  if (!active.length) {
-    wrap.innerHTML = '<p class="hint">No channels connected.</p>';
-    return;
-  }
-
-  wrap.innerHTML = active.map((channel, idx) => {
-    const channelId = String(channel.id || channel.channel_id || `channel_${idx + 1}`);
-    const name = escapeHtml(channel.channel_name || channel.title || channel.label || `Channel ${idx + 1}`);
-    const uploaded = Math.min(perDay, Number(counts.get(channelId) || 0));
-    const dots = Array.from({ length: perDay }, (_, dotIndex) => (
-      `<span class="tracker-dot ${dotIndex < uploaded ? 'done' : ''}">${dotIndex < uploaded ? '✅' : '⚪'}</span>`
-    )).join('');
-    return `
-      <div class="tracker-row">
-        <div class="tracker-name">${name}</div>
-        <div class="tracker-dots">${dots}</div>
-      </div>
-    `;
-  }).join('');
-}
-
-function captureUploadedEvents(data) {
-  const videos = Array.isArray(data?.videos) ? data.videos : [];
-  const channels = Array.isArray(data?.channels) ? data.channels : [];
-  const channelMap = new Map(channels.map((ch) => [String(ch.id || '').trim(), ch.channel_name || ch.title || ch.label || 'Channel']));
-  const uploadedVideos = videos.filter((video) => video.status === 'uploaded' && String(video.id || '').trim());
-  const currentIds = new Set(uploadedVideos.map((video) => String(video.id || '').trim()));
-
-  if (!state.uploadSeenInitialized) {
-    state.seenUploadedVideoIds = currentIds;
-    state.uploadSeenInitialized = true;
-    return;
-  }
-
-  uploadedVideos.forEach((video) => {
-    const id = String(video.id || '').trim();
-    if (!id || state.seenUploadedVideoIds.has(id)) return;
-    const channelName = channelMap.get(String(video.uploaded_channel_id || '').trim()) || 'Unknown Channel';
-    const title = String(video.assigned_title || video.title || video.original_file_name || id).trim();
-    addLog(`✅ "${title}" uploaded successfully (${channelName})`);
-  });
-  state.seenUploadedVideoIds = currentIds;
-}
-
-function titleCaseUpdateStage(stage) {
-  return String(stage || 'idle')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function renderUpdateCard() {
-  const statusPill = document.getElementById('app-update-status');
-  const messageEl = document.getElementById('app-update-message');
-  const currentEl = document.getElementById('app-current-version');
-  const availableEl = document.getElementById('app-available-version');
-  const installBtn = document.getElementById('install-update-btn');
-
-  if (!statusPill || !messageEl || !currentEl || !availableEl || !installBtn) return;
-
-  const updater = state.updater || {};
-  const metaVersion = state.appMeta?.version || '--';
-  const currentVersion = updater.currentVersion || metaVersion;
-
-  statusPill.textContent = titleCaseUpdateStage(updater.stage || 'idle');
-  messageEl.textContent = updater.message || 'Update status not available.';
-  currentEl.textContent = currentVersion;
-  availableEl.textContent = updater.availableVersion || '--';
-  installBtn.disabled = !Boolean(updater.downloaded);
-}
-
-function isChannelSelected(channel) {
-  return channel?.is_selected !== false && channel?.selected !== false;
-}
-
-function getScheduleChannelId(channel, index = 0) {
-  return String(
-    channel?.id
-    || channel?.channel_id
-    || channel?.channelId
-    || channel?.youtube_channel_id
-    || channel?.youtubeId
-    || `channel_${index + 1}`
-  );
-}
-
-function getScheduleChannels() {
-  const channels = Array.isArray(state.data?.channels) ? state.data.channels : [];
-  return channels.map((channel, index) => ({ ...channel, _scheduleId: getScheduleChannelId(channel, index) }));
-}
-
-function getScheduleChannelName(channel) {
-  return channel?.channel_name || channel?.title || channel?.label || 'Untitled Channel';
-}
-
-function ensureSelectedScheduleChannel() {
-  const channels = getScheduleChannels();
-  if (!channels.length) {
-    state.selectedScheduleChannelId = '';
+    const payload = token.split(".")[1];
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(normalized)
+        .split("")
+        .map((ch) => `%${`00${ch.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(""),
+    );
+    return JSON.parse(json);
+  } catch {
     return null;
   }
-
-  const hasSelected = channels.some((channel) => channel._scheduleId === state.selectedScheduleChannelId);
-  if (!hasSelected) {
-    state.selectedScheduleChannelId = channels[0]._scheduleId;
-  }
-  return channels.find((channel) => channel._scheduleId === state.selectedScheduleChannelId) || channels[0];
 }
 
-function renderVideos() {
-  const container = document.getElementById('drive-folders-container');
-  if (!container) return;
-  container.innerHTML = '';
+function applyTokenFromUrl() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("token");
+  if (!token) return;
+  setToken(token);
+  url.searchParams.delete("token");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+}
 
-  const folderRows = state.driveFolders.map((folderLink) => {
-    const folderId = extractDriveFolderId(folderLink);
-    const bucket = state.driveFolderData[folderId] || { videos: [], error: '' };
-    return {
-      folderId,
-      folderLink,
-      videos: Array.isArray(bucket.videos) ? bucket.videos : [],
-      error: String(bucket.error || ''),
-    };
-  });
+function updateAuthView() {
+  const token = getToken();
+  const isAuthed = Boolean(token);
+  nodes.loginScreen.classList.toggle("hidden", isAuthed);
+  nodes.appScreen.classList.toggle("hidden", !isAuthed);
 
-  const totalVideos = folderRows.reduce((acc, folder) => acc + folder.videos.length, 0);
-  const videoCountLabel = document.getElementById('library-video-count');
-  if (videoCountLabel) videoCountLabel.textContent = `Total Videos: ${totalVideos}`;
-  const videoCountTop = document.getElementById('library-video-count-top');
-  if (videoCountTop) videoCountTop.textContent = `Total Videos: ${totalVideos}`;
+  if (!isAuthed) return;
 
-  const folderLinkInput = document.getElementById('drive-folder-link-input');
-  if (folderLinkInput && state.driveFolders.length === 1 && !folderLinkInput.value) {
-    folderLinkInput.value = state.driveFolders[0];
-  }
+  const payload = decodeJwtPayload(token);
+  nodes.userEmail.textContent = payload?.email || "Signed in";
+  nodes.backendUrl.textContent = API_BASE_URL;
+}
 
-  renderTagChips();
-
-  const emptyState = document.getElementById('video-empty-state');
-  if (emptyState) {
-    emptyState.classList.toggle('hidden', totalVideos > 0 || folderRows.length > 0);
-  }
-
-  folderRows.forEach((folder, folderIndex) => {
-    const card = document.createElement('div');
-    card.className = 'glass-card table';
-    card.style.marginBottom = '12px';
-
-    const header = document.createElement('div');
-    header.className = 'page-header';
-    header.style.marginBottom = '8px';
-    header.innerHTML = `
-      <div>
-        <p class="section-count">Folder ${folderIndex + 1}</p>
-        <p class="section-count">Total Videos: ${folder.videos.length}</p>
-      </div>
-    `;
-    card.appendChild(header);
-
-    if (folder.error) {
-      const err = document.createElement('p');
-      err.className = 'error-msg';
-      err.textContent = 'Failed to load videos. Retrying...';
-      card.appendChild(err);
-      container.appendChild(card);
-      return;
-    }
-
-    const tableHeader = document.createElement('div');
-    tableHeader.className = 'table-header';
-    tableHeader.innerHTML = '<span>Video Name</span><span>File Size</span>';
-    card.appendChild(tableHeader);
-
-    const body = document.createElement('div');
-    body.className = 'table-body';
-    const fragment = document.createDocumentFragment();
-    folder.videos.forEach((video) => {
-      const row = document.createElement('div');
-      row.className = 'table-row';
-      row.innerHTML = `
-        <span class="truncate" title="${escapeHtml(video.title || video.original_file_name || '--')}">${escapeHtml(video.title || video.original_file_name || '--')}</span>
-        <span>${escapeHtml(formatBytes(video.size))}</span>
-      `;
-      fragment.appendChild(row);
-    });
-    body.appendChild(fragment);
-    card.appendChild(body);
-    container.appendChild(card);
-  });
+function renderStats(stats) {
+  nodes.statChannels.textContent = String(stats.total_channels || 0);
+  nodes.statVideos.textContent = String(stats.total_videos || 0);
+  nodes.statScheduled.textContent = String(stats.total_scheduled || 0);
+  nodes.statConnected.textContent = String(stats.connected_channels || 0);
 }
 
 function renderChannels() {
-  const list = document.getElementById('channel-list');
-  list.innerHTML = '';
-  const channels = state.data?.channels || [];
-  const channelCountLabel = document.getElementById('channels-total-count');
-  if (channelCountLabel) {
-    channelCountLabel.textContent = `Total Channels: ${channels.length}`;
-  }
-
-  channels.forEach((channel) => {
-    const card = document.createElement('div');
-    card.className = 'channel-card';
-    const channelName = channel.channel_name || channel.title || channel.label || 'Untitled Channel';
-    const safeChannelName = escapeHtml(channelName);
-    const channelUrl = channel.youtube_url || channel.channelUrl || '';
-    const safeChannelUrl = escapeHtml(channelUrl);
-    const avatarHtml = channel.thumbnail
-      ? `<img src="${escapeHtml(channel.thumbnail)}" alt="${safeChannelName} logo" class="channel-avatar" />`
-      : '<div class="channel-avatar inline-placeholder" aria-hidden="true">YT</div>';
-    const channelUrlHtml = channelUrl ? `<p class="channel-url" title="${safeChannelUrl}">${safeChannelUrl}</p>` : '';
-
-    const tokenConnected = channel.token_status === 'connected';
-    const tokenControlHtml = tokenConnected
-      ? '<span class="secondary" style="border-color: rgba(74,222,128,0.5); color:#4ade80; cursor: default;">✅ Connected</span>'
-      : '<button class="secondary" data-action="token">Get Token</button>';
-
-    card.innerHTML = `
-      <div class="channel-main">
-        <div class="channel-info">
-          <input class="channel-check" type="checkbox" data-action="toggle-select" ${isChannelSelected(channel) ? 'checked' : ''} />
-          ${avatarHtml}
-          <div class="channel-text">
-            <h4 class="channel-name" title="${safeChannelName}">${safeChannelName}</h4>
-            ${channelUrlHtml}
-          </div>
-        </div>
-      </div>
-      <div class="channel-actions">
-        ${tokenControlHtml}
-        <button class="secondary" data-action="open">Visit Channel</button>
-        <button class="secondary remove-btn" data-action="delete" title="Remove Channel">Remove</button>
-      </div>
-    `;
-
-    card.querySelector('[data-action="toggle-select"]').addEventListener('change', async (e) => {
-      await window.api.setChannelSelected({ channelId: channel.id, selected: e.target.checked });
-      await loadState();
-    });
-    const tokenBtn = card.querySelector('[data-action="token"]');
-    if (tokenBtn) {
-      tokenBtn.addEventListener('click', async () => {
-        try {
-          await window.api.getChannelToken(channel.id);
-          await loadState();
-        } catch (error) {
-          addLog(`Token error for ${channelName}: ${error.message}`);
-        }
-      });
-    }
-    card.querySelector('[data-action="open"]').addEventListener('click', () => window.api.openChannel(channel.id));
-    card.querySelector('[data-action="delete"]').addEventListener('click', () => window.api.deleteChannel(channel.id));
-
-    list.appendChild(card);
-  });
-}
-
-function renderVideosPerDaySelector(current) {
-  const container = document.getElementById('schedule-videos-box');
-  if (!container) return;
-  container.innerHTML = '';
-
-  for (let i = 1; i <= 5; i += 1) {
-    const div = document.createElement('div');
-    div.className = 'box-item';
-    if (i === current) div.classList.add('active');
-    div.textContent = `${i} / day`;
-    div.addEventListener('click', async () => {
-      await window.api.setVideosPerDay(i);
-      const hidden = document.getElementById('schedule-videos');
-      if (hidden) hidden.value = String(i);
-      await refreshAutomationStatus();
-      renderStats();
-      renderVideosPerDaySelector(i);
-      adjustSlots(i);
-      renderScheduleChannelList();
-      renderSlots();
-    });
-    container.appendChild(div);
-  }
-}
-
-function renderStats() {
-  const channels = (state.data?.channels || []);
-  const totalChannels = channels.length;
-  const videos = state.data?.videos || [];
-  const uploadedToday = videos.filter((video) => video.status === 'uploaded' && isUploadedToday(video)).length;
-  const perChannelPerDay = Math.max(1, Math.min(5, Number(state.data?.settings?.videosPerDay || 1)));
-  const totalPerDay = perChannelPerDay * Math.max(0, totalChannels);
-
-  document.getElementById('stat-channels').textContent = String(totalChannels);
-  document.getElementById('stat-videos-available').textContent = String(videos.length);
-  document.getElementById('stat-videos-per-day').textContent = String(totalPerDay);
-  const todayEl = document.getElementById('stat-today-uploaded');
-  if (todayEl) todayEl.textContent = String(uploadedToday);
-  renderChannelUploadTracker();
-  renderAutomationTopSection();
-}
-
-function renderProgress() {
-  // Progress bar intentionally removed for automation-first UX.
-}
-
-function syncUploadControls(automationEnabled, uploadRunning) {
-  const startUploadBtn = document.getElementById('start-upload');
-  const stopUploadBtn = document.getElementById('stop-upload');
-  const startAutomationBtn = document.getElementById('start-automation');
-  const stopAutomationBtn = document.getElementById('stop-automation');
-  const uploadStrip = document.getElementById('upload-strip');
-
-  if (startUploadBtn) startUploadBtn.classList.toggle('hidden', uploadRunning);
-  if (stopUploadBtn) stopUploadBtn.classList.toggle('hidden', !uploadRunning);
-  if (startAutomationBtn) startAutomationBtn.classList.toggle('hidden', automationEnabled);
-  if (stopAutomationBtn) stopAutomationBtn.classList.toggle('hidden', !automationEnabled);
-  if (uploadStrip) uploadStrip.classList.toggle('hidden', true);
-}
-
-async function refreshAutomationUpgradeStatus() {
-  const statusEl = document.getElementById('cloud-upgrade-status');
-  if (!statusEl) return;
-
-  try {
-    const status = await window.api.getAutomationUpgradeStatus();
-    const value = (v) => (v ? 'Ready' : 'Missing');
-    document.getElementById('upgrade-folders-ready').textContent = value(status.foldersReady);
-    document.getElementById('upgrade-api-ready').textContent = value(status.apiModuleReady);
-    document.getElementById('upgrade-workflow-ready').textContent = value(status.workflowReady);
-    document.getElementById('upgrade-queue-count').textContent = String(status.queueCount || 0);
-
-    statusEl.textContent = status.automationRunning ? 'Running' : status.overallReady ? 'Upgrade Ready' : 'Partial';
-    statusEl.style.color = status.automationRunning ? 'var(--success)' : status.overallReady ? 'var(--accent-blue)' : 'var(--danger)';
-  } catch (error) {
-    statusEl.textContent = 'Unavailable';
-    statusEl.style.color = 'var(--danger)';
-  }
-}
-
-async function refreshInternet() {
-  const ok = await window.api.checkInternet();
-  const pill = document.getElementById('internet-status');
-  if (!pill) return;
-  pill.textContent = ok ? 'Online' : 'Offline';
-  pill.style.color = ok ? 'var(--success)' : 'var(--danger)';
-}
-
-async function refreshAutomationStatus() {
-  const status = await window.api.getAutomationStatus();
-  const automationEnabled = Boolean(status.automationRunning);
-  const uploadRunning = Boolean(status.uploadInProgress);
-  state.automationStatus = {
-    automationRunning: automationEnabled,
-    uploadInProgress: uploadRunning,
-  };
-  document.getElementById('automation-running-text').textContent = status.automationRunning ? 'Yes' : 'No';
-  const todayUploaded = (state.data?.videos || []).filter((video) => video.status === 'uploaded' && isUploadedToday(video)).length;
-  document.getElementById('automation-pending-text').textContent = `Today Uploaded Videos: ${todayUploaded}`;
-  document.getElementById('schedule-videos').value = String(status.videosPerDay || 5);
-  syncUploadControls(automationEnabled, uploadRunning);
-  renderProgress();
-  renderVideosPerDaySelector(status.videosPerDay || 5);
-  adjustSlots(status.videosPerDay || 5);
-  renderScheduleChannelList();
-  renderSlots();
-  renderAutomationTopSection();
-}
-
-async function loadAppMeta() {
-  try {
-    state.appMeta = await window.api.getAppMeta();
-  } catch (error) {
-    state.appMeta = { version: '--' };
-  }
-  renderUpdateCard();
-}
-
-function adjustSlots(count) {
-  const channels = getScheduleChannels();
-  if (!state.channelSlotPlans || typeof state.channelSlotPlans !== 'object') {
-    state.channelSlotPlans = {};
-  }
-  channels.forEach((channel) => {
-    const channelId = channel._scheduleId;
-    const current = normalizeSlotPlan(state.channelSlotPlans[channelId]);
-    while (current.length < count) {
-      current.push({
-        time: '',
-        date: '',
-        publish_date: '',
-        publish_time: '',
-        upload_date: '',
-        upload_time: '',
-        auto_upload_enabled: true,
-        videoId: '',
-        title: '',
-        status: 'pending',
-        slot_number: current.length + 1,
-        manualTime: false,
-      });
-    }
-    if (current.length > count) {
-      current.splice(count);
-    }
-    state.channelSlotPlans[channelId] = current.map((slot, index) => ({
-      ...slot,
-      slot_number: index + 1,
-    }));
-  });
-  state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
-}
-
-function normalizeSlotPlan(rawSlots) {
-  if (!Array.isArray(rawSlots)) return [];
-  return rawSlots.map((slot, index) => {
-    const date = String(slot?.publish_date || slot?.date || '').trim();
-    const time = String(slot?.publish_time || slot?.time || '').trim();
-    const autoUploadEnabled = slot?.auto_upload_enabled !== undefined
-      ? Boolean(slot.auto_upload_enabled)
-      : !Boolean(slot?.manualTime || slot?.manual_upload_time);
-    const uploadDate = String(slot?.upload_date || '').trim();
-    const uploadTime = String(slot?.upload_time || '').trim();
-    const normalized = {
-      time,
-      date,
-      publish_date: date,
-      publish_time: time,
-      upload_date: uploadDate,
-      upload_time: uploadTime,
-      auto_upload_enabled: autoUploadEnabled,
-      videoId: String(slot?.videoId || slot?.video_id || '').trim(),
-      title: String(slot?.title || '').trim(),
-      status: String(slot?.status || 'pending').trim() || 'pending',
-      slot_number: Number(slot?.slot_number || (index + 1)),
-      manualTime: !autoUploadEnabled,
-    };
-    if (normalized.auto_upload_enabled && normalized.date && normalized.time) {
-      const auto = calculateAutoUploadFromPublish({
-        publishDate: normalized.date,
-        publishTime: normalized.time,
-        slotNumber: normalized.slot_number,
-      });
-      normalized.upload_date = auto.upload_date;
-      normalized.upload_time = auto.upload_time;
-    }
-    return normalized;
-  });
-}
-
-function addMinutesToTime(baseTime, offsetMinutes) {
-  const match = String(baseTime || '').match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return '';
-  const hh = Number(match[1]);
-  const mm = Number(match[2]);
-  if (!Number.isInteger(hh) || !Number.isInteger(mm)) return '';
-  const total = ((hh * 60) + mm + Number(offsetMinutes || 0)) % (24 * 60);
-  const safeTotal = total < 0 ? total + (24 * 60) : total;
-  const outH = Math.floor(safeTotal / 60);
-  const outM = safeTotal % 60;
-  return `${String(outH).padStart(2, '0')}:${String(outM).padStart(2, '0')}`;
-}
-
-function parseDateTimeLocal(dateStr, timeStr) {
-  const date = String(dateStr || '').trim();
-  const time = String(timeStr || '').trim();
-  const match = time.match(/^(\d{1,2}):(\d{2})$/);
-  if (!date || !match) return null;
-  const [y, m, d] = date.split('-').map(Number);
-  const hh = Number(match[1]);
-  const mm = Number(match[2]);
-  const dt = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
-
-function formatDateOnlyLocal(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function formatTimeOnlyLocal(date) {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-function randomInt(min, max) {
-  const lo = Math.ceil(Number(min || 0));
-  const hi = Math.floor(Number(max || 0));
-  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
-}
-
-function to12HourParts(time24) {
-  const match = String(time24 || '').match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return { hour12: '', minute: '', ampm: 'AM', label: '' };
-  const hh = Number(match[1]);
-  const mm = String(match[2]).padStart(2, '0');
-  const ampm = hh >= 12 ? 'PM' : 'AM';
-  const hour12 = String(((hh + 11) % 12) + 1);
-  const label = `${hour12.padStart(2, '0')}:${mm} ${ampm}`;
-  return { hour12, minute: mm, ampm, label };
-}
-
-function from12HourParts(hour12, minute, ampm) {
-  const h12Num = Number(hour12);
-  const mmNum = Number(minute);
-  if (!Number.isFinite(h12Num) || !Number.isFinite(mmNum)) return '';
-  if (h12Num < 1 || h12Num > 12 || mmNum < 0 || mmNum > 59) return '';
-  const h12 = Math.trunc(h12Num);
-  const mm = Math.trunc(mmNum);
-  const upper = String(ampm || 'AM').toUpperCase() === 'PM' ? 'PM' : 'AM';
-  let h24 = h12 % 12;
-  if (upper === 'PM') h24 += 12;
-  return `${String(h24).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
-function calculateAutoUploadFromPublish({ publishDate, publishTime, slotNumber }) {
-  const publishAt = parseDateTimeLocal(publishDate, publishTime);
-  if (!publishAt) {
-    return { upload_date: '', upload_time: '' };
-  }
-
-  const windows = {
-    1: { startDayOffset: -1, startHour: 15, endDayOffset: -1, endHour: 18 },
-    2: { startDayOffset: -1, startHour: 19, endDayOffset: -1, endHour: 21 },
-    3: { startDayOffset: -1, startHour: 22, endDayOffset: 0, endHour: 0 },
-    4: { startDayOffset: 0, startHour: 1, endDayOffset: 0, endHour: 3 },
-    5: { startDayOffset: 0, startHour: 4, endDayOffset: 0, endHour: 6 },
-  };
-  const safeSlot = Math.max(1, Math.min(5, Number(slotNumber || 1)));
-  const cfg = windows[safeSlot] || windows[1];
-
-  const publishMidnight = new Date(publishAt);
-  publishMidnight.setHours(0, 0, 0, 0);
-
-  const start = new Date(publishMidnight);
-  start.setDate(start.getDate() + cfg.startDayOffset);
-  start.setHours(cfg.startHour, 0, 0, 0);
-
-  const end = new Date(publishMidnight);
-  end.setDate(end.getDate() + cfg.endDayOffset);
-  end.setHours(cfg.endHour, 0, 0, 0);
-  if (end <= start) end.setDate(end.getDate() + 1);
-
-  const span = Math.max(1, end.getTime() - start.getTime());
-  const candidate = new Date(start.getTime() + randomInt(0, span - 1));
-  candidate.setSeconds(randomInt(3, 57), 0);
-
-  if (candidate >= publishAt) {
-    candidate.setTime(publishAt.getTime() - (2 * 60 * 60 * 1000));
-  }
-
-  return {
-    upload_date: formatDateOnlyLocal(candidate),
-    upload_time: formatTimeOnlyLocal(candidate),
-  };
-}
-
-const FIXED_SLOT_TIMES = {
-  1: { hour: 4, minute: 0 },
-  2: { hour: 7, minute: 0 },
-  3: { hour: 13, minute: 0 },
-  4: { hour: 17, minute: 0 },
-  5: { hour: 22, minute: 0 },
-};
-
-const SLOT_PRESETS_BY_COUNT = {
-  1: [5],
-  2: [1, 5],
-  3: [1, 4, 5],
-  4: [1, 2, 4, 5],
-  5: [1, 2, 3, 4, 5],
-};
-
-function getActiveSlotNumbersByCount(count) {
-  const safe = Math.max(1, Math.min(5, Number(count || 1)));
-  return SLOT_PRESETS_BY_COUNT[safe] ? SLOT_PRESETS_BY_COUNT[safe].slice() : SLOT_PRESETS_BY_COUNT[1].slice();
-}
-
-function validateSlotUploadTiming(slot) {
-  const uploadAt = parseDateTimeLocal(slot.upload_date, slot.upload_time);
-  const publishAt = parseDateTimeLocal(slot.date, slot.time);
-  if (!uploadAt || !publishAt) return 'Invalid date/time.';
-  if (uploadAt >= publishAt) return 'Upload must be before publish.';
-  const gapHours = (publishAt.getTime() - uploadAt.getTime()) / (1000 * 60 * 60);
-  if (gapHours < 2) return 'Minimum upload gap is 2 hours.';
-  return '';
-}
-
-function isValidIsoDate(value) {
-  const date = String(value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const [y, m, d] = date.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  return dt.getFullYear() === y && (dt.getMonth() + 1) === m && dt.getDate() === d;
-}
-
-function isValidTime24(value) {
-  const time = String(value || '').trim();
-  if (!/^\d{2}:\d{2}$/.test(time)) return false;
-  const [h, m] = time.split(':').map(Number);
-  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
-}
-
-function parseIsoDateParts(value) {
-  const date = String(value || '').trim();
-  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return { dd: '', mm: '', yyyy: '' };
-  return { dd: match[3], mm: match[2], yyyy: match[1] };
-}
-
-function buildIsoDateFromParts(dd, mm, yyyy) {
-  const d = String(dd || '').trim();
-  const m = String(mm || '').trim();
-  const y = String(yyyy || '').trim();
-  if (!d && !m && !y) return '';
-  if (d.length !== 2 || m.length !== 2 || y.length !== 4) return '';
-  const iso = `${y}-${m}-${d}`;
-  return isValidIsoDate(iso) ? iso : '';
-}
-
-function sanitizeDigits(value, maxLen) {
-  return String(value || '').replace(/\D+/g, '').slice(0, maxLen);
-}
-
-function padTwoIfSingle(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  return raw.length === 1 ? `0${raw}` : raw;
-}
-
-function isSlotFilled(slot) {
-  return Boolean(
-    slot?.date || slot?.time || slot?.upload_date || slot?.upload_time || slot?.videoId || slot?.title
-  );
-}
-
-function getSlotBlockingError(slot) {
-  if (!slot?.date || !slot?.time || !slot?.upload_date || !slot?.upload_time || !slot?.videoId || !slot?.title) {
-    return 'All fields are required.';
-  }
-  if (!isValidIsoDate(slot.date) || !isValidIsoDate(slot.upload_date)) return 'Invalid date format.';
-  if (!isValidTime24(slot.time) || !isValidTime24(slot.upload_time)) return 'Invalid time format.';
-  return validateSlotUploadTiming(slot);
-}
-
-function flattenChannelSlotPlans() {
-  const channels = getScheduleChannels();
-  const combined = [];
-  channels.forEach((channel) => {
-    const channelId = channel._scheduleId;
-    const channelName = getScheduleChannelName(channel);
-    const plan = normalizeSlotPlan(state.channelSlotPlans[channelId] || []);
-    plan.forEach((slot, index) => {
-      combined.push({
-        ...slot,
-        publish_date: slot.date,
-        publish_time: slot.time,
-        slot_number: Number(slot.slot_number || (index + 1)),
-        channelId,
-        channelName,
-      });
-    });
-  });
-  return combined;
-}
-
-function renderScheduleChannelList() {
-  const list = document.getElementById('schedule-channel-list');
-  if (!list) return;
-  list.innerHTML = '';
-
-  const channels = getScheduleChannels();
-  const activeChannel = ensureSelectedScheduleChannel();
-  if (!channels.length) {
-    list.innerHTML = '<p class="hint">No connected channels found.</p>';
+  if (!nodes.channelsList) return;
+  if (!state.channels.length) {
+    nodes.channelsList.innerHTML = '<div class="item muted">No channels yet.</div>';
     return;
   }
 
-  channels.forEach((channel) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = getScheduleChannelName(channel);
-    button.classList.toggle('active', channel._scheduleId === activeChannel?._scheduleId);
-    button.addEventListener('click', () => {
-      state.selectedScheduleChannelId = channel._scheduleId;
-      state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
-      renderScheduleChannelList();
-      renderSlots();
-    });
-    list.appendChild(button);
+  nodes.channelsList.innerHTML = state.channels
+    .map((channel) => {
+      const name = channel.name || "Untitled";
+      const status = channel.status || "unknown";
+      return `<div class="item"><strong>${name}</strong><div class="muted">Status: ${status}</div></div>`;
+    })
+    .join("");
+}
+
+function renderVideosSelect() {
+  if (!nodes.scheduleVideo) return;
+  nodes.scheduleVideo.innerHTML = "";
+
+  state.videos.forEach((video) => {
+    const option = document.createElement("option");
+    option.value = video.id;
+    option.textContent = video.name;
+    nodes.scheduleVideo.appendChild(option);
   });
 }
 
-function renderAutoScheduleButton() {
-  const btn = document.getElementById('auto-schedule-btn');
-  if (!btn) return;
-  btn.textContent = state.autoScheduleEnabled ? 'AUTO SCHEDULE: ON' : 'AUTO SCHEDULE: OFF';
-  btn.classList.toggle('active', state.autoScheduleEnabled);
+function renderChannelsSelect() {
+  if (!nodes.scheduleChannel) return;
+  nodes.scheduleChannel.innerHTML = "";
+
+  state.channels.forEach((channel) => {
+    const option = document.createElement("option");
+    option.value = channel.id;
+    option.textContent = channel.name;
+    nodes.scheduleChannel.appendChild(option);
+  });
 }
 
-function renderSlots() {
-  const container = document.getElementById('schedule-items');
-  const title = document.getElementById('schedule-slots-title');
-  if (!container) return;
-  container.innerHTML = '';
-  const channels = getScheduleChannels();
-  const activeChannel = ensureSelectedScheduleChannel();
-  if (!channels.length || !activeChannel) {
-    if (title) title.textContent = 'Schedule Slots';
-    container.innerHTML = '<p class="hint">Connect at least one channel to create channel-wise slots.</p>';
+function renderSchedules() {
+  if (!nodes.schedulesList) return;
+  if (!state.schedules.length) {
+    nodes.schedulesList.innerHTML = '<div class="item muted">No schedules yet.</div>';
     return;
   }
 
-  const activeChannelId = activeChannel._scheduleId;
-  if (!state.channelSlotPlans || typeof state.channelSlotPlans !== 'object') {
-    state.channelSlotPlans = {};
-  }
-  state.channelSlotPlans[activeChannelId] = normalizeSlotPlan(state.channelSlotPlans[activeChannelId] || []);
-  state.slots = state.channelSlotPlans[activeChannelId];
-  if (title) title.textContent = `Schedule Slots (${getScheduleChannelName(activeChannel)})`;
-
-  const unassignedVideos = (state.data?.videos || []).filter(v => v.status === 'pending');
-  if (!state.slots.length) {
-    container.innerHTML = '<p class="hint">No slots found. Choose videos/day and click AUTO SCHEDULE.</p>';
-    return;
-  }
-
-  state.slots.forEach((slot, index) => {
-    const card = document.createElement('div');
-    const slotKey = `${activeChannelId}-${index}`;
-    card.className = `slot-card ${state.selectedSlotKey === slotKey ? 'selected' : ''}`;
-    const blockingError = isSlotFilled(slot) ? getSlotBlockingError(slot) : '';
-    const uploadDateParts = parseIsoDateParts(slot.upload_date);
-    const publishDateParts = parseIsoDateParts(slot.date);
-    const upload12 = to12HourParts(slot.upload_time);
-    const publish12 = to12HourParts(slot.time);
-
-    card.innerHTML = `
-      <div class="slot-header">Slot ${slot.slot_number || (index + 1)}</div>
-      <div class="slot-section upload-section">
-        <div class="slot-section-title">Upload (YouTube API Execution Time)</div>
-        <div class="slot-fields compact-grid">
-          <div class="slot-field">
-            <label>Date</label>
-            <div class="date-compact">
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-upload-dd" data-index="${index}" value="${uploadDateParts.dd}" placeholder="DD" />
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-upload-mm" data-index="${index}" value="${uploadDateParts.mm}" placeholder="MM" />
-              <input type="text" inputmode="numeric" maxlength="4" class="slot-upload-yyyy" data-index="${index}" value="${uploadDateParts.yyyy}" placeholder="YYYY" />
-            </div>
-          </div>
-          <div class="slot-field">
-            <label>Time</label>
-            <div class="time-compact-input">
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-upload-hh" data-index="${index}" value="${upload12.hour12}" placeholder="HH" />
-              <span class="time-colon">:</span>
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-upload-min" data-index="${index}" value="${upload12.minute}" placeholder="MM" />
-              <button type="button" class="slot-ampm slot-upload-ampm" data-index="${index}">${upload12.ampm || 'AM'}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="slot-section publish-section">
-        <div class="slot-section-title">Publish (Live Time)</div>
-        <div class="slot-fields compact-grid">
-          <div class="slot-field">
-            <label>Date</label>
-            <div class="date-compact">
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-publish-dd" data-index="${index}" value="${publishDateParts.dd}" placeholder="DD" />
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-publish-mm" data-index="${index}" value="${publishDateParts.mm}" placeholder="MM" />
-              <input type="text" inputmode="numeric" maxlength="4" class="slot-publish-yyyy" data-index="${index}" value="${publishDateParts.yyyy}" placeholder="YYYY" />
-            </div>
-          </div>
-          <div class="slot-field">
-            <label>Time</label>
-            <div class="time-compact-input">
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-publish-hh" data-index="${index}" value="${publish12.hour12}" placeholder="HH" />
-              <span class="time-colon">:</span>
-              <input type="text" inputmode="numeric" maxlength="2" class="slot-publish-min" data-index="${index}" value="${publish12.minute}" placeholder="MM" />
-              <button type="button" class="slot-ampm slot-publish-ampm" data-index="${index}">${publish12.ampm || 'AM'}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="slot-fields compact-grid">
-        <div class="slot-field">
-          <label>Video</label>
-          <select class="slot-video" data-index="${index}">
-            <option value="">-- Select Video --</option>
-            ${unassignedVideos.map(v => `<option value="${v.id || v.path}" ${slot.videoId === (v.id || v.path) ? 'selected' : ''}>${escapeHtml(v.title || v.original_file_name || v.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="slot-field">
-          <label>Title</label>
-          <input type="text" class="slot-title" data-index="${index}" value="${escapeHtml(slot.title || '')}" placeholder="Video Title" />
-        </div>
-      </div>
-      <p class="error-msg slot-error ${blockingError ? '' : 'hidden'}">${escapeHtml(blockingError)}</p>
-    `;
-
-    card.addEventListener('click', () => {
-      state.selectedSlotKey = slotKey;
-      renderSlots();
-    });
-
-    const sanitizeFieldInput = (el, maxLen) => {
-      el.value = sanitizeDigits(el.value, maxLen);
-    };
-
-    const padDateFields = (ddEl, mmEl, yyyyEl) => {
-      ddEl.value = padTwoIfSingle(sanitizeDigits(ddEl.value, 2));
-      mmEl.value = padTwoIfSingle(sanitizeDigits(mmEl.value, 2));
-      yyyyEl.value = sanitizeDigits(yyyyEl.value, 4);
-    };
-
-    const padTimeFields = (hhEl, mmEl) => {
-      hhEl.value = padTwoIfSingle(sanitizeDigits(hhEl.value, 2));
-      mmEl.value = padTwoIfSingle(sanitizeDigits(mmEl.value, 2));
-    };
-
-    const setErrorText = (message) => {
-      const errorEl = card.querySelector('.slot-error');
-      errorEl.textContent = message || '';
-      errorEl.classList.toggle('hidden', !message);
-    };
-
-    const toggleInvalid = (elements, invalid) => {
-      elements.forEach((el) => el.classList.toggle('invalid', invalid));
-    };
-
-    const applyValidationUi = () => {
-      const current = state.channelSlotPlans[activeChannelId][index];
-      const hasUploadDate = Boolean(current.upload_date);
-      const hasPublishDate = Boolean(current.date);
-      const hasUploadTime = Boolean(current.upload_time);
-      const hasPublishTime = Boolean(current.time);
-
-      const uploadDateInvalid = hasUploadDate && !isValidIsoDate(current.upload_date);
-      const publishDateInvalid = hasPublishDate && !isValidIsoDate(current.date);
-      const uploadTimeInvalid = hasUploadTime && !isValidTime24(current.upload_time);
-      const publishTimeInvalid = hasPublishTime && !isValidTime24(current.time);
-
-      toggleInvalid(
-        [
-          card.querySelector('.slot-upload-dd'),
-          card.querySelector('.slot-upload-mm'),
-          card.querySelector('.slot-upload-yyyy'),
-        ],
-        uploadDateInvalid
-      );
-      toggleInvalid(
-        [
-          card.querySelector('.slot-publish-dd'),
-          card.querySelector('.slot-publish-mm'),
-          card.querySelector('.slot-publish-yyyy'),
-        ],
-        publishDateInvalid
-      );
-      toggleInvalid(
-        [
-          card.querySelector('.slot-upload-hh'),
-          card.querySelector('.slot-upload-min'),
-        ],
-        uploadTimeInvalid
-      );
-      toggleInvalid(
-        [
-          card.querySelector('.slot-publish-hh'),
-          card.querySelector('.slot-publish-min'),
-        ],
-        publishTimeInvalid
-      );
-
-      const message = isSlotFilled(current) ? getSlotBlockingError(current) : '';
-      setErrorText(message);
-    };
-
-    const updatePublishDateFromParts = () => {
-      const ddEl = card.querySelector('.slot-publish-dd');
-      const mmEl = card.querySelector('.slot-publish-mm');
-      const yyyyEl = card.querySelector('.slot-publish-yyyy');
-      const iso = buildIsoDateFromParts(ddEl.value, mmEl.value, yyyyEl.value);
-      state.channelSlotPlans[activeChannelId][index].date = iso;
-      state.channelSlotPlans[activeChannelId][index].publish_date = iso;
-      state.slots = state.channelSlotPlans[activeChannelId];
-      applyValidationUi();
-    };
-
-    const updatePublishTimeFromParts = () => {
-      const hour = card.querySelector('.slot-publish-hh').value;
-      const minute = card.querySelector('.slot-publish-min').value;
-      const ampm = card.querySelector('.slot-publish-ampm').textContent;
-      const value24 = from12HourParts(hour, minute, ampm);
-      state.channelSlotPlans[activeChannelId][index].time = value24;
-      state.channelSlotPlans[activeChannelId][index].publish_time = value24;
-      state.slots = state.channelSlotPlans[activeChannelId];
-      applyValidationUi();
-    };
-
-    const updateUploadDateFromParts = () => {
-      const ddEl = card.querySelector('.slot-upload-dd');
-      const mmEl = card.querySelector('.slot-upload-mm');
-      const yyyyEl = card.querySelector('.slot-upload-yyyy');
-      const iso = buildIsoDateFromParts(ddEl.value, mmEl.value, yyyyEl.value);
-      state.channelSlotPlans[activeChannelId][index].upload_date = iso;
-      state.channelSlotPlans[activeChannelId][index].manual_upload_time = true;
-      state.channelSlotPlans[activeChannelId][index].auto_upload_enabled = false;
-      state.slots = state.channelSlotPlans[activeChannelId];
-      applyValidationUi();
-    };
-
-    const updateUploadTimeFromParts = () => {
-      const hour = card.querySelector('.slot-upload-hh').value;
-      const minute = card.querySelector('.slot-upload-min').value;
-      const ampm = card.querySelector('.slot-upload-ampm').textContent;
-      const value24 = from12HourParts(hour, minute, ampm);
-      state.channelSlotPlans[activeChannelId][index].upload_time = value24;
-      state.channelSlotPlans[activeChannelId][index].manual_upload_time = true;
-      state.channelSlotPlans[activeChannelId][index].auto_upload_enabled = false;
-      state.slots = state.channelSlotPlans[activeChannelId];
-      applyValidationUi();
-    };
-
-    const bindTypedDate = (ddSel, mmSel, yyyySel, onUpdate) => {
-      const ddEl = card.querySelector(ddSel);
-      const mmEl = card.querySelector(mmSel);
-      const yyyyEl = card.querySelector(yyyySel);
-      [ddEl, mmEl, yyyyEl].forEach((el) => {
-        el.addEventListener('input', () => {
-          sanitizeFieldInput(el, Number(el.maxLength || 2));
-          onUpdate();
-        });
-      });
-      [ddEl, mmEl, yyyyEl].forEach((el) => {
-        el.addEventListener('blur', () => {
-          padDateFields(ddEl, mmEl, yyyyEl);
-          onUpdate();
-        });
-        el.addEventListener('keydown', (evt) => {
-          if (evt.key === 'Enter') {
-            evt.preventDefault();
-            el.blur();
-          }
-        });
-      });
-    };
-
-    const bindTypedTime = (hhSel, mmSel, ampmSel, onUpdate) => {
-      const hhEl = card.querySelector(hhSel);
-      const mmEl = card.querySelector(mmSel);
-      const ampmBtn = card.querySelector(ampmSel);
-      [hhEl, mmEl].forEach((el) => {
-        el.addEventListener('input', () => {
-          sanitizeFieldInput(el, Number(el.maxLength || 2));
-          onUpdate();
-        });
-        el.addEventListener('blur', () => {
-          padTimeFields(hhEl, mmEl);
-          onUpdate();
-        });
-        el.addEventListener('keydown', (evt) => {
-          if (evt.key === 'Enter') {
-            evt.preventDefault();
-            el.blur();
-          }
-        });
-      });
-      ampmBtn.addEventListener('click', () => {
-        ampmBtn.textContent = ampmBtn.textContent === 'PM' ? 'AM' : 'PM';
-        onUpdate();
-      });
-    };
-
-    bindTypedDate('.slot-publish-dd', '.slot-publish-mm', '.slot-publish-yyyy', updatePublishDateFromParts);
-    bindTypedDate('.slot-upload-dd', '.slot-upload-mm', '.slot-upload-yyyy', updateUploadDateFromParts);
-    bindTypedTime('.slot-publish-hh', '.slot-publish-min', '.slot-publish-ampm', updatePublishTimeFromParts);
-    bindTypedTime('.slot-upload-hh', '.slot-upload-min', '.slot-upload-ampm', updateUploadTimeFromParts);
-
-    card.querySelector('.slot-video').addEventListener('change', e => { 
-      state.channelSlotPlans[activeChannelId][index].videoId = e.target.value;
-      const vid = unassignedVideos.find(v => (v.id || v.path) === e.target.value);
-      if (vid && !state.channelSlotPlans[activeChannelId][index].title) {
-        state.channelSlotPlans[activeChannelId][index].title = vid.title || vid.original_file_name || '';
-        card.querySelector('.slot-title').value = state.channelSlotPlans[activeChannelId][index].title;
-      }
-      state.slots = state.channelSlotPlans[activeChannelId];
-    });
-    card.querySelector('.slot-title').addEventListener('input', e => {
-      state.channelSlotPlans[activeChannelId][index].title = e.target.value;
-      state.slots = state.channelSlotPlans[activeChannelId];
-      applyValidationUi();
-    });
-    applyValidationUi();
-    container.appendChild(card);
-  });
+  nodes.schedulesList.innerHTML = state.schedules
+    .map((s) => {
+      const channelName = s.channel?.name || s.channel_id;
+      const videoName = s.video?.name || s.video_id;
+      return `<div class="item"><strong>${videoName}</strong><div class="muted">${channelName} � ${new Date(s.scheduled_at).toLocaleString()} � ${s.status}</div></div>`;
+    })
+    .join("");
 }
 
-document.getElementById('auto-schedule-btn')?.addEventListener('click', () => {
-  const channels = getScheduleChannels().filter(isChannelSelected);
-  if (!channels.length) {
-    addLog('Auto Schedule blocked: connect at least one selected channel.');
-    return;
-  }
+async function loadDashboardData() {
+  const [stats, channelsData, videosData, schedulesData, automationData] = await Promise.all([
+    api.stats(),
+    api.channels.list(),
+    api.videos.list(),
+    api.schedules.list(),
+    api.automation.status(),
+  ]);
 
-  const perChannelCount = Math.max(1, Math.min(5, Number(state.data?.settings?.videosPerDay || 1)));
-  if (!perChannelCount) {
-    addLog('Auto Schedule blocked: choose videos/day first.');
-    return;
-  }
+  state.channels = channelsData.channels || [];
+  state.videos = videosData.videos || [];
+  state.schedules = schedulesData.schedules || [];
 
-  state.autoScheduleEnabled = true;
-  renderAutoScheduleButton();
-
-  const activeSlotNumbers = getActiveSlotNumbersByCount(perChannelCount);
-  const shuffledChannels = [...channels].sort(() => Math.random() - 0.5);
-  const unassigned = (state.data?.videos || []).filter(v => v.status === 'pending');
-  let videoCursor = 0;
-  const baseTitlePool = Array.isArray(state.data?.settings?.titlePool)
-    ? [...state.data.settings.titlePool]
-    : String(state.data?.settings?.titlePool || '').split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
-  const usedPublishTimes = new Set();
-  const usedUploadTimes = new Set();
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
-
-  const uploadWindowForSlot = (publishBase, slotNumber) => {
-    const windows = {
-      1: { startDayOffset: -1, startHour: 15, endDayOffset: -1, endHour: 18 },
-      2: { startDayOffset: -1, startHour: 19, endDayOffset: -1, endHour: 21 },
-      3: { startDayOffset: -1, startHour: 22, endDayOffset: 0, endHour: 0 },
-      4: { startDayOffset: 0, startHour: 1, endDayOffset: 0, endHour: 3 },
-      5: { startDayOffset: 0, startHour: 4, endDayOffset: 0, endHour: 6 },
-    };
-    const cfg = windows[slotNumber] || windows[1];
-    const start = new Date(publishBase);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() + cfg.startDayOffset);
-    start.setHours(cfg.startHour, 0, 0, 0);
-    const end = new Date(publishBase);
-    end.setHours(0, 0, 0, 0);
-    end.setDate(end.getDate() + cfg.endDayOffset);
-    end.setHours(cfg.endHour, 0, 0, 0);
-    if (end <= start) end.setDate(end.getDate() + 1);
-    return { start, end };
-  };
-
-  const plans = {};
-  shuffledChannels.forEach((channel) => {
-    plans[channel._scheduleId] = [];
-  });
-
-  activeSlotNumbers.forEach((slotNumber) => {
-    const basePublish = new Date(tomorrow);
-    const fixed = FIXED_SLOT_TIMES[slotNumber] || FIXED_SLOT_TIMES[5];
-    basePublish.setHours(fixed.hour, fixed.minute, 0, 0);
-
-    const channelOrder = [...shuffledChannels].sort(() => Math.random() - 0.5);
-    const { start, end } = uploadWindowForSlot(basePublish, slotNumber);
-    const spanMs = Math.max(1, end.getTime() - start.getTime());
-    const stepMs = spanMs / (channelOrder.length + 1);
-    let cumulativePublishDelay = 0;
-
-    channelOrder.forEach((channel, index) => {
-      if (index > 0) cumulativePublishDelay += randomInt(1, 5);
-      const channelId = channel._scheduleId;
-      const slot = {
-        slot_number: slotNumber,
-        date: '',
-        time: '',
-        publish_date: '',
-        publish_time: '',
-        upload_date: '',
-        upload_time: '',
-        auto_upload_enabled: true,
-        manual_upload_time: false,
-        videoId: '',
-        title: '',
-        status: 'scheduled',
-      };
-
-      const publishAt = new Date(basePublish);
-      publishAt.setMinutes(publishAt.getMinutes() + cumulativePublishDelay);
-      publishAt.setSeconds(randomInt(1, 50), 0);
-      while (usedPublishTimes.has(`${formatDateOnlyLocal(publishAt)} ${formatTimeOnlyLocal(publishAt)}`)) {
-        publishAt.setMinutes(publishAt.getMinutes() + 1);
-      }
-      usedPublishTimes.add(`${formatDateOnlyLocal(publishAt)} ${formatTimeOnlyLocal(publishAt)}`);
-      slot.date = formatDateOnlyLocal(publishAt);
-      slot.publish_date = slot.date;
-      slot.time = formatTimeOnlyLocal(publishAt);
-      slot.publish_time = slot.time;
-
-      const anchorMs = start.getTime() + (stepMs * (index + 1));
-      const jitterMs = randomInt(-Math.floor(stepMs * 0.35), Math.floor(stepMs * 0.35));
-      const uploadAt = new Date(Math.max(start.getTime() + 60_000, Math.min(end.getTime() - 60_000, anchorMs + jitterMs)));
-      uploadAt.setSeconds(randomInt(3, 57), 0);
-      while (usedUploadTimes.has(`${formatDateOnlyLocal(uploadAt)} ${formatTimeOnlyLocal(uploadAt)}`)) {
-        uploadAt.setMinutes(uploadAt.getMinutes() + 1);
-      }
-      if (uploadAt >= publishAt) {
-        uploadAt.setTime(publishAt.getTime() - (2 * 60 * 60 * 1000));
-      }
-      usedUploadTimes.add(`${formatDateOnlyLocal(uploadAt)} ${formatTimeOnlyLocal(uploadAt)}`);
-      slot.upload_date = formatDateOnlyLocal(uploadAt);
-      slot.upload_time = formatTimeOnlyLocal(uploadAt);
-
-      if (videoCursor < unassigned.length) {
-        const vid = unassigned[videoCursor++];
-        slot.videoId = vid.id || vid.path;
-        slot.title = vid.title || vid.original_file_name || '';
-      }
-
-      if (baseTitlePool.length > 0) {
-        slot.title = baseTitlePool[randomInt(0, baseTitlePool.length - 1)];
-      } else if (!slot.title) {
-        slot.title = 'Automated Video Upload';
-      }
-
-      plans[channelId].push(slot);
-    });
-  });
-
-  channels.forEach((channel) => {
-    const channelId = channel._scheduleId;
-    const plan = (plans[channelId] || []).sort((a, b) => a.slot_number - b.slot_number);
-    state.channelSlotPlans[channelId] = normalizeSlotPlan(plan);
-  });
-
-  state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
-  renderScheduleChannelList();
-  renderSlots();
-  addLog('Auto Schedule: fixed publish slots + randomized upload windows applied for all active channels.');
-  const totalRequired = perChannelCount * channels.length;
-  if (unassigned.length < totalRequired) {
-     addLog(`WARNING: Only ${unassigned.length} videos available for ${totalRequired} channel slots.`);
-  }
-});
-
-document.getElementById('save-plan-btn')?.addEventListener('click', async () => {
-  try {
-    const flattened = flattenChannelSlotPlans();
-    const blockingSlot = flattened.find((slot) => getSlotBlockingError(slot));
-    if (blockingSlot) {
-      addLog(`Save plan blocked: ${blockingSlot.channelName} Slot ${blockingSlot.slot_number} -> ${getSlotBlockingError(blockingSlot)}`);
-      return;
-    }
-    const automationSlots = Array.from(new Set(
-      flattened.map((slot) => slot.upload_time).filter(Boolean)
-    )).sort();
-    await window.api.updateSettings({
-      slots: flattened,
-      channelSlotPlans: state.channelSlotPlans,
-      automationSlots,
-      autoScheduleEnabled: state.autoScheduleEnabled,
-    });
-    state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
-    addLog('Slot plan saved successfully.');
-  } catch (err) {
-    addLog(`Error saving plan: ${err.message}`);
-  }
-});
-
-async function refreshUpdateStatus() {
-  try {
-    state.updater = await window.api.getUpdateStatus();
-  } catch (error) {
-    state.updater = {
-      stage: 'error',
-      message: error.message || 'Unable to load updater status.',
-      currentVersion: state.appMeta?.version || '--',
-    };
-  }
-  renderUpdateCard();
-}
-
-async function fetchDriveVideos(options = {}) {
-  const { silent = false } = options;
-  const rawInput = document.getElementById('drive-folder-link-input')?.value?.trim() || '';
-  const inputLinks = rawInput
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const persistedLinks = Array.isArray(state.data?.settings?.driveFolderLinks) ? state.data.settings.driveFolderLinks : [];
-  const links = Array.from(new Set([...(state.driveFolders || []), ...persistedLinks, ...inputLinks]))
-    .filter((link) => extractDriveFolderId(link));
-  if (!links.length) return;
-
-  state.driveFolders = links;
-  await window.api.updateSettings({ driveFolderLinks: links });
-
-  if (!silent) setDriveFolderImportLoading(true);
-  if (!silent) setDriveFolderImportResult('');
-
-  try {
-    const results = await Promise.allSettled(
-      links.map((folderLink) => window.api.fetchDriveVideos({ folderLink }))
-    );
-
-    const nextData = {};
-    results.forEach((result, index) => {
-      const folderLink = links[index];
-      const folderId = extractDriveFolderId(folderLink);
-      if (!folderId) return;
-      if (result.status === 'fulfilled') {
-        nextData[folderId] = {
-          videos: Array.isArray(result.value?.videos) ? result.value.videos : [],
-          error: '',
-        };
-      } else {
-        nextData[folderId] = {
-          videos: [],
-          error: result.reason?.message || 'Failed',
-        };
-      }
-    });
-
-    state.driveFolderData = nextData;
-    renderVideos();
-    const total = Object.values(nextData).reduce((acc, item) => acc + (item.videos?.length || 0), 0);
-    const summary = `Total Videos: ${total}`;
-    if (!silent) setDriveFolderImportResult(summary);
-  } catch (error) {
-    if (!silent) setDriveFolderImportResult(error.message || 'Drive fetch failed', true);
-  } finally {
-    if (!silent) setDriveFolderImportLoading(false);
-  }
-}
-
-async function loadState() {
-  state.data = await window.api.getState();
-  state.autoScheduleEnabled = Boolean(state.data?.settings?.autoScheduleEnabled);
-  const channels = getScheduleChannels();
-  const fromChannelPlans = state.data?.settings?.channelSlotPlans;
-  state.channelSlotPlans = {};
-
-  if (fromChannelPlans && typeof fromChannelPlans === 'object') {
-    channels.forEach((channel) => {
-      const channelId = channel._scheduleId;
-      state.channelSlotPlans[channelId] = normalizeSlotPlan(fromChannelPlans[channelId] || []);
-    });
-  } else {
-    const fromSettingsSlots = normalizeSlotPlan(state.data?.settings?.slots);
-    if (channels.length && fromSettingsSlots.length) {
-      state.channelSlotPlans[channels[0]._scheduleId] = fromSettingsSlots;
-    }
-  }
-
-  const videosPerDay = Number(state.data?.settings?.videosPerDay || 5);
-  ensureSelectedScheduleChannel();
-  adjustSlots(videosPerDay);
-  state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
-
-  const configuredLinks = Array.isArray(state.data?.settings?.driveFolderLinks) ? state.data.settings.driveFolderLinks : [];
-  if (!Array.isArray(state.driveFolders) || !state.driveFolders.length) {
-    state.driveFolders = configuredLinks;
-  }
-  if (!state.driveFolderData || typeof state.driveFolderData !== 'object') {
-    state.driveFolderData = {};
-  }
-  if (!Array.isArray(state.tagChips) || state.tagChips.length === 0) {
-    state.tagChips = parseTagsFromString(state.data?.settings?.globalTags || '');
-  }
-  renderVideos();
+  renderStats(stats);
   renderChannels();
-  captureUploadedEvents(state.data);
-  renderStats();
-  renderAutoScheduleButton();
-  renderScheduleChannelList();
-  renderSlots();
-  renderProgress();
-  await refreshAutomationStatus();
-  await refreshAutomationUpgradeStatus();
+  renderChannelsSelect();
+  renderVideosSelect();
+  renderSchedules();
+  nodes.automationStatus.textContent = `Running: ${automationData.is_running ? "Yes" : "No"} | Pending: ${automationData.pending_videos || 0} | Uploaded: ${automationData.uploaded_videos || 0}`;
 }
 
-window.api.onLog((message) => addLog(message));
-window.api.onProgress((payload) => {
-  state.uploadSummary.totalVideos = Number(payload.totalVideos || 0);
-  state.uploadSummary.completedVideos = Number(payload.completedVideos || 0);
-  state.uploadSummary.totalBytes = Number(payload.totalBytes || 0);
-  state.uploadSummary.uploadedBytes = Number(payload.uploadedBytes || 0);
-  renderProgress();
-});
-window.api.onDriveSyncProgress((payload) => {
-  const statusEl = document.getElementById('drive-upload-status');
-  const progressBar = document.getElementById('drive-upload-progress');
-  if (!statusEl) return;
-  const total = Number(payload?.total || 0);
-  const done = Number(payload?.done || 0);
-  const uploaded = Number(payload?.uploaded || 0);
-  const failed = Number(payload?.failed || 0);
-  const message = payload?.message || '';
-  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
-  if (progressBar) {
-    progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-  }
-  if (total > 0) {
-    statusEl.textContent = `${message} (${done}/${total}, success ${uploaded}, failed ${failed})`;
-  } else {
-    statusEl.textContent = message || 'Upload progress will appear here.';
-  }
-});
-window.api.onDriveUploadItem((payload) => {
-  const feed = document.getElementById('drive-upload-feed');
-  if (!feed) return;
-
-  const fileName = String(payload?.fileName || 'Uploaded file');
-  const visitLink = String(payload?.visitLink || '').trim();
-
-  const row = document.createElement('div');
-  row.className = 'table-row';
-  row.style.gridTemplateColumns = '1fr auto';
-  row.innerHTML = `
-    <span class="truncate" title="${escapeHtml(fileName)}">Uploaded: ${escapeHtml(fileName)}</span>
-    <button class="secondary" data-action="visit-file">Visit File</button>
-  `;
-  row.querySelector('[data-action="visit-file"]')?.addEventListener('click', async () => {
-    if (!visitLink) return;
-    await window.api.openExternal(visitLink);
-  });
-  feed.prepend(row);
-});
-window.api.onState((data) => {
-  captureUploadedEvents(data);
-  state.data = data;
-  state.autoScheduleEnabled = Boolean(state.data?.settings?.autoScheduleEnabled);
-  const fromChannelPlans = state.data?.settings?.channelSlotPlans;
-  if (fromChannelPlans && typeof fromChannelPlans === 'object') {
-    const channels = getScheduleChannels();
-    state.channelSlotPlans = {};
-    channels.forEach((channel) => {
-      state.channelSlotPlans[channel._scheduleId] = normalizeSlotPlan(fromChannelPlans[channel._scheduleId] || []);
+function setupNav() {
+  const links = document.querySelectorAll(".nav-link");
+  const pages = document.querySelectorAll(".page");
+  links.forEach((link) => {
+    link.addEventListener("click", () => {
+      links.forEach((item) => item.classList.remove("active"));
+      link.classList.add("active");
+      const page = link.getAttribute("data-page");
+      pages.forEach((section) => {
+        section.classList.toggle("active", section.id === `page-${page}`);
+      });
     });
-  }
-  ensureSelectedScheduleChannel();
-  adjustSlots(Number(state.data?.settings?.videosPerDay || 5));
-  renderVideos();
-  renderChannels();
-  renderAutoScheduleButton();
-  renderScheduleChannelList();
-  renderSlots();
-  renderStats();
-  refreshAutomationStatus();
-  refreshAutomationUpgradeStatus();
-  if (isLibraryPageActive()) {
-    fetchDriveVideos({ silent: true });
-  }
-});
-
-function setDriveFolderImportLoading(loading) {
-  const loadingEl = document.getElementById('drive-folder-loading');
-  const importBtn = document.getElementById('import-drive-folder');
-  const refreshBtn = document.getElementById('refresh-drive-folder');
-  if (loadingEl) loadingEl.classList.toggle('hidden', !loading);
-  if (importBtn) importBtn.disabled = loading;
-  if (refreshBtn) refreshBtn.disabled = loading;
+  });
 }
 
-function setDriveFolderImportResult(message, isError = false) {
-  const errorEl = document.getElementById('drive-folder-error');
-  if (errorEl) {
-    errorEl.textContent = isError ? message : '';
-  }
-  if (!isError) {
-    const counterEl = document.getElementById('drive-folder-counter');
-    if (counterEl && message) {
-      counterEl.textContent = message;
-    }
-  }
-}
+function wireActions() {
+  nodes.loginBtn?.addEventListener("click", () => {
+    window.location.href = `${API_BASE_URL}/api/auth/google/start`;
+  });
 
-document.getElementById('import-drive-folder')?.addEventListener('click', async () => {
-  const driveApiKey = document.getElementById('drive-api-key-input')?.value?.trim() || '';
-  if (driveApiKey) {
+  nodes.logoutBtn?.addEventListener("click", () => {
+    clearToken();
+    updateAuthView();
+    showMessage("Logged out");
+  });
+
+  nodes.refreshBtn?.addEventListener("click", async () => {
     try {
-      await window.api.updateSettings({ driveApiKey });
-      document.getElementById('drive-api-key-input').value = '';
+      await loadDashboardData();
+      showMessage("Data refreshed");
     } catch (error) {
-      setDriveFolderImportResult(error.message || 'Failed to save Drive API key', true);
-      return;
+      showMessage(error.message, true);
     }
-  }
-  await fetchDriveVideos();
-});
-
-document.getElementById('refresh-drive-folder')?.addEventListener('click', async () => {
-  await fetchDriveVideos();
-});
-
-document.getElementById('tags-entry-input')?.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter') return;
-  event.preventDefault();
-  const raw = String(event.target.value || '').trim();
-  if (!raw) return;
-  if (!state.tagChips.includes(raw)) {
-    state.tagChips.push(raw);
-  }
-  event.target.value = '';
-  renderTagChips();
-});
-
-async function startDriveUpload(localPaths) {
-  const errorEl = document.getElementById('drive-upload-error');
-  const statusEl = document.getElementById('drive-upload-status');
-  if (errorEl) errorEl.textContent = '';
-  if (statusEl) statusEl.textContent = 'Preparing upload...';
-  const folderLink = document.getElementById('drive-folder-link-input')?.value?.trim() || state.driveFolders[0] || '';
-
-  try {
-    const result = await window.api.uploadVideosToDrive({
-      paths: localPaths,
-      folderLink,
-    });
-    if (statusEl) {
-      statusEl.textContent = `Upload complete. Uploaded ${result.uploaded || 0}, failed ${result.failed || 0}.`;
-    }
-    await fetchDriveVideos({ silent: true });
-  } catch (error) {
-    if (errorEl) errorEl.textContent = error.message || 'Drive upload failed';
-  }
-}
-
-function extractLocalPathsFromFileList(fileList) {
-  const files = Array.from(fileList || []);
-  return files
-    .map((file) => String(file?.path || '').trim())
-    .filter(Boolean);
-}
-
-const dropZone = document.getElementById('drive-drop-zone');
-if (dropZone) {
-  ['dragenter', 'dragover'].forEach((eventName) => {
-    dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      dropZone.classList.add('active');
-    });
   });
 
-  ['dragleave', 'drop'].forEach((eventName) => {
-    dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      dropZone.classList.remove('active');
-    });
-  });
+  nodes.createChannelBtn?.addEventListener("click", async () => {
+    const name = String(nodes.channelName.value || "").trim();
+    const client_id = String(nodes.channelClientId.value || "").trim();
+    const client_secret = String(nodes.channelClientSecret.value || "").trim();
 
-  dropZone.addEventListener('drop', async (event) => {
-    event.preventDefault();
-    const paths = extractLocalPathsFromFileList(event.dataTransfer?.files || []);
-    if (!paths.length) return;
-    await startDriveUpload(paths);
-  });
-}
-
-document.getElementById('pick-drive-files')?.addEventListener('click', () => {
-  document.getElementById('drive-file-picker')?.click();
-});
-
-document.getElementById('pick-drive-folder')?.addEventListener('click', () => {
-  document.getElementById('drive-folder-picker')?.click();
-});
-
-document.getElementById('drive-file-picker')?.addEventListener('change', async (event) => {
-  const paths = extractLocalPathsFromFileList(event.target?.files || []);
-  if (paths.length) {
-    await startDriveUpload(paths);
-  }
-  event.target.value = '';
-});
-
-document.getElementById('drive-folder-picker')?.addEventListener('change', async (event) => {
-  const paths = extractLocalPathsFromFileList(event.target?.files || []);
-  if (paths.length) {
-    await startDriveUpload(paths);
-  }
-  event.target.value = '';
-});
-
-document.getElementById('save-content-settings')?.addEventListener('click', async () => {
-  const titlesEl = document.getElementById('global-titles-input');
-  const titlesErrorEl = document.getElementById('titles-error');
-  const metadataErrorEl = document.getElementById('metadata-error');
-  const titles = parseTitleLines(titlesEl?.value || '');
-  if (titlesErrorEl) titlesErrorEl.textContent = '';
-  if (metadataErrorEl) metadataErrorEl.textContent = '';
-
-  if (!titles.length) {
-    if (titlesErrorEl) titlesErrorEl.textContent = 'Add at least one title.';
-    return;
-  }
-
-  const tags = state.tagChips.join(', ');
-  const description = document.getElementById('global-description-input')?.value?.trim() || '';
-
-  try {
-    await window.api.updateSettings({
-      titlePool: titles,
-      globalTags: tags,
-      globalDescription: description,
-      defaultDescription: description,
-    });
-    await window.api.autoAssignVideoTitles(titles);
-    await window.api.applyGlobalMetadataToVideos();
-    await loadState();
-    addLog(`Content settings saved (${titles.length} titles, ${state.tagChips.length} tags).`);
-  } catch (error) {
-    if (metadataErrorEl) metadataErrorEl.textContent = error.message || 'Failed to save content settings';
-  }
-});
-
-document.getElementById('save-api-keys')?.addEventListener('click', async () => {
-  const driveKey = document.getElementById('drive-api-key-input')?.value?.trim() || '';
-  const youtubeKey = document.getElementById('youtube-api-key-input')?.value?.trim() || '';
-  const errorEl = document.getElementById('api-key-error');
-  if (errorEl) errorEl.textContent = '';
-
-  if (!driveKey) {
-    if (errorEl) errorEl.textContent = 'Drive API Key is required.';
-    return;
-  }
-
-  try {
-    await window.api.updateSettings({
-      driveApiKey: driveKey,
-      youtubeApiKey: youtubeKey,
-    });
-    document.getElementById('drive-api-key-input').value = '';
-    document.getElementById('youtube-api-key-input').value = '';
-    await loadState();
-    addLog('API keys saved. Drive import will use DRIVE_API_KEY only.');
-  } catch (error) {
-    if (errorEl) errorEl.textContent = error.message || 'Failed to save API keys';
-  }
-});
-
-document.getElementById('clear-videos')?.addEventListener('click', async () => {
-  const confirmed = window.confirm('Delete ALL videos from Google Drive folder and clear the app list?');
-  if (!confirmed) return;
-
-  const errorEl = document.getElementById('drive-upload-error');
-  if (errorEl) errorEl.textContent = '';
-  try {
-    const folderLink = document.getElementById('drive-folder-link-input')?.value?.trim() || '';
-    await window.api.deleteAllDriveVideos({ folderLink });
-    await fetchDriveVideos({ silent: true });
-  } catch (error) {
-    if (errorEl) errorEl.textContent = error.message || 'Failed to delete all videos';
-  }
-});
-
-document.getElementById('start-upload')?.addEventListener('click', async () => {
-  addLog('Starting manual upload cycle...');
-  syncUploadControls(state.automationStatus.automationRunning, true);
-  state.uploadSummary.totalVideos = 0;
-  state.uploadSummary.completedVideos = 0;
-  state.automationStatus.uploadInProgress = true;
-  renderProgress();
-  try {
-    const result = await window.api.startUpload();
-    if (result?.status === 'busy') {
-      addLog(result.message || 'Upload already running.');
-    }
-    await loadState();
-  } catch (error) {
-    addLog(`Upload error: ${error.message}`);
-  }
-});
-
-document.getElementById('stop-upload')?.addEventListener('click', async () => {
-  addLog('Stopping upload cycle...');
-  try {
-    await window.api.stopUpload();
-    await loadState();
-  } catch (error) {
-    addLog(`Stop error: ${error.message}`);
-  }
-});
-
-document.getElementById('start-automation')?.addEventListener('click', async () => {
-  const now = new Date().toISOString();
-  if (state.data?.settings) {
-    state.data.settings.automationStartedAt = now;
-    state.data.settings.automationStoppedAt = '';
-    state.data.settings.automationRunning = true;
-  }
-  renderAutomationTopSection();
-  try {
-    const normalized = flattenChannelSlotPlans();
-    const blockingSlot = normalized.find((slot) => getSlotBlockingError(slot));
-    if (blockingSlot) {
-      addLog(`Start blocked: ${blockingSlot.channelName} Slot ${blockingSlot.slot_number} -> ${getSlotBlockingError(blockingSlot)}`);
-      return;
-    }
-    const automationSlots = Array.from(new Set(
-      normalized.map((slot) => slot.upload_time).filter(Boolean)
-    )).sort();
-    await window.api.updateSettings({
-      slots: normalized,
-      channelSlotPlans: state.channelSlotPlans,
-      automationSlots,
-      autoScheduleEnabled: state.autoScheduleEnabled,
-    });
-    state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
-
-    const preflight = await window.api.preflightAutomation();
-    if (!preflight?.ok) {
-      const reasons = Array.isArray(preflight?.errors) ? preflight.errors : ['Preflight validation failed.'];
-      reasons.forEach((reason) => addLog(`Preflight: ${reason}`));
+    if (!name || !client_id || !client_secret) {
+      showMessage("Channel name, client ID and client secret are required", true);
       return;
     }
 
-    await window.api.startAutomation();
-    await loadState();
-  } catch (error) {
-    if (state.data?.settings) {
-      state.data.settings.automationRunning = false;
+    try {
+      await api.channels.create({ name, client_id, client_secret });
+      nodes.channelName.value = "";
+      nodes.channelClientId.value = "";
+      nodes.channelClientSecret.value = "";
+      await loadDashboardData();
+      showMessage("Channel connected successfully");
+    } catch (error) {
+      showMessage(error.message, true);
     }
-    renderAutomationTopSection();
-    addLog(`❌ Automation error: ${error.message}`);
-    await loadState();
-  }
-});
+  });
 
-document.getElementById('stop-automation')?.addEventListener('click', async () => {
-  const now = new Date().toISOString();
-  if (state.data?.settings) {
-    state.data.settings.automationRunning = false;
-    state.data.settings.automationStoppedAt = now;
-  }
-  renderAutomationTopSection();
+  nodes.uploadBtn?.addEventListener("click", async () => {
+    const file = nodes.uploadFile.files?.[0];
+    const title = String(nodes.uploadTitle.value || "").trim();
+    const description = String(nodes.uploadDescription.value || "").trim();
+    const tags = String(nodes.uploadTags.value || "").trim();
+
+    if (!file || !title) {
+      showMessage("Video file and title are required", true);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("title", title);
+    formData.append("description", description);
+    formData.append("tags", tags);
+
+    try {
+      const result = await api.uploadVideo(formData);
+      nodes.uploadResult.textContent = `Queued: ${result?.video?.title || title}`;
+      nodes.uploadTitle.value = "";
+      nodes.uploadDescription.value = "";
+      nodes.uploadTags.value = "";
+      nodes.uploadFile.value = "";
+      showMessage("Video upload request sent");
+    } catch (error) {
+      nodes.uploadResult.textContent = "";
+      showMessage(error.message, true);
+    }
+  });
+
+  nodes.addScheduleBtn?.addEventListener("click", async () => {
+    const channel_id = nodes.scheduleChannel.value;
+    const video_id = nodes.scheduleVideo.value;
+    const datetime = nodes.scheduleDatetime.value;
+
+    if (!channel_id || !video_id || !datetime) {
+      showMessage("Channel, video and date-time are required", true);
+      return;
+    }
+
+    try {
+      await api.schedules.create({
+        channel_id,
+        video_id,
+        scheduled_at: new Date(datetime).toISOString(),
+      });
+      await loadDashboardData();
+      showMessage("Schedule added successfully");
+    } catch (error) {
+      showMessage(error.message, true);
+    }
+  });
+
+  nodes.startAutomationBtn?.addEventListener("click", async () => {
+    try {
+      await api.automation.start();
+      await loadDashboardData();
+      showMessage("Automation started");
+    } catch (error) {
+      showMessage(error.message, true);
+    }
+  });
+
+  nodes.stopAutomationBtn?.addEventListener("click", async () => {
+    try {
+      await api.automation.stop();
+      await loadDashboardData();
+      showMessage("Automation stopped");
+    } catch (error) {
+      showMessage(error.message, true);
+    }
+  });
+}
+
+async function boot() {
+  applyTokenFromUrl();
+  setupNav();
+  wireActions();
+  updateAuthView();
+
+  if (!getToken()) return;
+
   try {
-    await window.api.stopAutomation();
-    await loadState();
+    await loadDashboardData();
   } catch (error) {
-    addLog(`❌ Automation stop error: ${error.message}`);
+    if (String(error.message || "").toLowerCase().includes("unauthorized") || String(error.message || "").toLowerCase().includes("invalid token")) {
+      clearToken();
+      updateAuthView();
+      showMessage("Session expired, please login again", true);
+      return;
+    }
+    showMessage(error.message, true);
   }
-});
-
-document.getElementById('check-update-btn')?.addEventListener('click', async () => {
-  try {
-    addLog('Checking for app updates...');
-    await window.api.checkForUpdates();
-    await refreshUpdateStatus();
-  } catch (error) {
-    addLog(`Update check failed: ${error.message}`);
-    state.updater = {
-      ...(state.updater || {}),
-      stage: 'error',
-      message: error.message || 'Update check failed.',
-    };
-    renderUpdateCard();
-  }
-});
-
-document.getElementById('install-update-btn')?.addEventListener('click', async () => {
-  try {
-    addLog('Installing downloaded update and restarting app...');
-    await window.api.installDownloadedUpdate();
-  } catch (error) {
-    addLog(`Install update failed: ${error.message}`);
-    state.updater = {
-      ...(state.updater || {}),
-      stage: 'error',
-      message: error.message || 'Install update failed.',
-    };
-    renderUpdateCard();
-  }
-});
-
-// Channels
-const addChannelBtn = document.getElementById('add-channel');
-const channelModal = document.getElementById('channel-modal');
-const connectOverlay = document.getElementById('connect-loading-overlay');
-const channelToast = document.getElementById('channel-toast');
-let channelConnectInProgress = false;
-let channelToastTimer = null;
-
-function setChannelFormMessage(message, type = 'error') {
-  const errorEl = document.getElementById('channel-form-error');
-  if (!errorEl) return;
-  errorEl.textContent = message || '';
-  errorEl.classList.toggle('success-msg', type === 'success');
 }
 
-function showChannelToast(message, type = 'success') {
-  if (!channelToast) return;
-  channelToast.textContent = message;
-  channelToast.classList.remove('hidden', 'success', 'error');
-  channelToast.classList.add(type === 'success' ? 'success' : 'error');
-  if (channelToastTimer) clearTimeout(channelToastTimer);
-  channelToastTimer = setTimeout(() => {
-    channelToast.classList.add('hidden');
-  }, 3000);
-}
-
-function setChannelLoading(loading) {
-  document.body.classList.toggle('app-loading', loading);
-  connectOverlay?.classList.toggle('hidden', !loading);
-}
-
-function mapChannelConnectError(error) {
-  const raw = String(error?.message || '').trim();
-  const message = raw.toLowerCase();
-
-  if (message === '__channel_connect_timeout__') {
-    return 'Connection Timeout. Please try again.';
-  }
-  if (message.includes('invalid_client') || message.includes('invalid client') || message.includes('client id')) {
-    return 'Invalid Client ID';
-  }
-  if (
-    message.includes('authentication failed')
-    || message.includes('authorization failed')
-    || message.includes('access_denied')
-    || message.includes('canceled')
-  ) {
-    return 'Authentication Failed';
-  }
-  if (message.includes('oauth')) {
-    return 'OAuth Error';
-  }
-  if (message.includes('network') || message.includes('econn') || message.includes('enotfound') || message.includes('timeout')) {
-    return 'Network Error';
-  }
-  return raw || 'Channel connection failed.';
-}
-
-function resetChannelForm() {
-  document.getElementById('client-id').value = '';
-  document.getElementById('client-secret').value = '';
-  document.getElementById('api-key').value = '';
-  document.getElementById('channel-url').value = '';
-  document.getElementById('oauth-json').value = '';
-  document.getElementById('oauth-json-text').value = '';
-  document.getElementById('oauth-file-name').textContent = '';
-  setChannelFormMessage('');
-}
-
-addChannelBtn.addEventListener('click', () => {
-  resetChannelForm();
-  channelModal.classList.remove('hidden');
-});
-
-document.getElementById('close-modal')?.addEventListener('click', () => {
-  if (channelConnectInProgress) return;
-  channelModal.classList.add('hidden');
-});
-
-document.getElementById('pick-oauth').addEventListener('click', async () => {
-  const filePath = await window.api.selectOAuthJson();
-  if (filePath) {
-    document.getElementById('oauth-json').value = filePath;
-    const parts = filePath.split(/[\\/]/);
-    document.getElementById('oauth-file-name').textContent = parts[parts.length - 1];
-  }
-});
-
-document.getElementById('connect-channel').addEventListener('click', async () => {
-  if (channelConnectInProgress) return;
-
-  const payload = {
-    clientId: document.getElementById('client-id').value.trim(),
-    clientSecret: document.getElementById('client-secret').value.trim(),
-    apiKey: document.getElementById('api-key').value.trim(),
-    channelUrl: document.getElementById('channel-url').value.trim(),
-    oauthJsonPath: document.getElementById('oauth-json').value.trim(),
-    oauthJsonText: document.getElementById('oauth-json-text').value.trim(),
-  };
-
-  if (!payload.clientId || !payload.clientSecret) {
-    setChannelFormMessage('Please fill Client ID and Client Secret.');
-    return;
-  }
-
-  channelConnectInProgress = true;
-  setChannelFormMessage('');
-  setChannelLoading(true);
-
-  let timeoutHandle = null;
-  try {
-    await Promise.race([
-      window.api.addChannel(payload),
-      new Promise((_, reject) => {
-        timeoutHandle = setTimeout(() => reject(new Error('__CHANNEL_CONNECT_TIMEOUT__')), 30000);
-      }),
-    ]);
-    setChannelLoading(false);
-    resetChannelForm();
-    document.getElementById('channel-modal').classList.add('hidden');
-    showChannelToast('Channel added. Click Get Token from channel row.', 'success');
-    await loadState();
-  } catch (error) {
-    setChannelLoading(false);
-    const message = mapChannelConnectError(error);
-    setChannelFormMessage(message);
-    showChannelToast(message, 'error');
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-    channelConnectInProgress = false;
-    setChannelLoading(false);
-  }
-});
-
-loadState().then(() => {
-  if (isLibraryPageActive()) {
-    fetchDriveVideos();
-  }
-  startDriveAutoRefresh();
-});
-refreshInternet();
-setInterval(refreshInternet, 15000);
-setInterval(refreshAutomationStatus, 20000);
-setInterval(refreshAutomationUpgradeStatus, 20000);
+boot();
