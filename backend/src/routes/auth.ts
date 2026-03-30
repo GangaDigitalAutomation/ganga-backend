@@ -10,6 +10,13 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function normalizeFrontendUrl(raw: string | undefined) {
+  const value = String(raw || "").trim();
+  if (!value) return "http://localhost:3000";
+  const absolute = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return absolute.replace(/\/+$/, "");
+}
+
 async function upsertUser(app: App, email: string, name?: string | null) {
   const normalized = normalizeEmail(email);
   const existing = await app.db
@@ -103,7 +110,7 @@ export function registerAuthRoutes(app: App) {
         return reply.status(403).send({ error: "Email is not allowlisted" });
       }
       const token = signSession(app, { sub: user.id, email: user.email, is_allowed: true });
-      const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/+$/, "");
+      const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL);
       return reply.redirect(`${frontendUrl}/dashboard?token=${encodeURIComponent(token)}`);
     },
   );
