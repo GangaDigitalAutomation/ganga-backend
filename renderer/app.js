@@ -248,7 +248,7 @@ function renderChannelUploadTracker() {
     const name = escapeHtml(channel.channel_name || channel.title || channel.label || `Channel ${idx + 1}`);
     const uploaded = Math.min(perDay, Number(counts.get(channelId) || 0));
     const dots = Array.from({ length: perDay }, (_, dotIndex) => (
-      `<span class="tracker-dot ${dotIndex < uploaded ? 'done' : ''}">${dotIndex < uploaded ? '?' : '?'}</span>`
+      `<span class="tracker-dot ${dotIndex < uploaded ? 'done' : ''}"></span>`
     )).join('');
     return `
       <div class="tracker-row">
