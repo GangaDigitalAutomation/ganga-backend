@@ -450,7 +450,7 @@ function renderChannels() {
 
     const tokenConnected = channel.token_status === 'connected';
     const tokenControlHtml = tokenConnected
-      ? '<span class="secondary" style="border-color: rgba(74,222,128,0.5); color:#4ade80; cursor: default;">? Connected</span>'
+      ? '<span class="status-connected"><span class="status-dot"></span>Connected</span>'
       : '<button class="secondary" data-action="token">Get Token</button>';
 
     card.innerHTML = `

@@ -1,18 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
 
 :root {
-  --bg: #06060b;
-  --panel: rgba(15, 16, 26, 0.55);
-  --panel-strong: rgba(18, 20, 36, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --accent-purple: #a855f7;
-  --accent-pink: #ec4899;
-  --accent-blue: #38bdf8;
-  --text-primary: #f8fafc;
-  --text-muted: #a1a1aa;
-  --success: #4ade80;
+  --bg: #0a0f0d;
+  --panel: #111827;
+  --panel-strong: #121b14;
+  --glass-border: #1f2937;
+  --accent-green: #22c55e;
+  --accent-green-strong: #16a34a;
+  --accent-neon: #00ff88;
+  --accent-blue: #22c55e;
+  --accent-purple: #064e3b;
+  --accent-pink: #00ff88;
+  --text-primary: #e5e7eb;
+  --text-muted: #9ca3af;
+  --success: #22c55e;
   --danger: #f43f5e;
-  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -23,8 +26,8 @@
 
 body {
   font-family: 'Space Grotesk', 'Segoe UI Emoji', 'Noto Color Emoji', 'Apple Color Emoji', sans-serif;
-  background: radial-gradient(circle at top left, rgba(168, 85, 247, 0.15), transparent 40%),
-    radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.12), transparent 40%),
+  background: radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 45%),
+    radial-gradient(circle at bottom right, rgba(0, 255, 136, 0.08), transparent 45%),
     var(--bg);
   color: var(--text-primary);
   min-height: 100vh;
@@ -38,8 +41,8 @@ body {
 
 .sidebar {
   padding: 28px 24px;
-  background: linear-gradient(180deg, rgba(12, 12, 22, 0.9), rgba(5, 5, 10, 0.9));
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  background: #020617;
+  border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -60,8 +63,9 @@ body {
   font-weight: 700;
   font-family: 'Rajdhani', sans-serif;
   font-size: 20px;
-  background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+  background: linear-gradient(135deg, var(--accent-green), var(--accent-neon));
+  color: #0a0f0d;
+  box-shadow: 0 0 22px rgba(34, 197, 94, 0.35);
 }
 
 .brand h1 {
@@ -94,10 +98,10 @@ body {
 
 .nav-link.active,
 .nav-link:hover {
-  color: var(--text-primary);
-  border-color: rgba(168, 85, 247, 0.3);
-  background: rgba(168, 85, 247, 0.12);
-  box-shadow: 0 0 18px rgba(168, 85, 247, 0.2);
+  color: var(--accent-green);
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(6, 78, 59, 0.6);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.18);
 }
 
 .sidebar-footer {
@@ -114,6 +118,26 @@ body {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   text-align: center;
+}
+
+.status-connected {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-green);
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent-green);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
 }
 
 .content {
@@ -212,13 +236,18 @@ button {
 }
 
 .primary {
-  background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-  color: #fff;
-  box-shadow: 0 10px 25px rgba(56, 189, 248, 0.25);
+  background: var(--accent-green);
+  color: #0a0f0d;
+  box-shadow: 0 10px 25px rgba(34, 197, 94, 0.3);
+}
+
+.primary:hover {
+  background: var(--accent-green-strong);
+  box-shadow: 0 12px 28px rgba(34, 197, 94, 0.35);
 }
 
 .secondary {
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   color: var(--text-primary);
   border: 1px solid var(--glass-border);
 }
@@ -264,7 +293,7 @@ button {
 .progress {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, var(--accent-pink), var(--accent-blue));
+  background: linear-gradient(90deg, var(--accent-green), var(--accent-neon));
   transition: width 0.2s ease;
 }
 
@@ -311,10 +340,10 @@ button {
 }
 
 .stat-day-data-glow {
-  border-color: rgba(168, 85, 247, 0.55);
+  border-color: rgba(34, 197, 94, 0.55);
   box-shadow:
-    0 0 18px rgba(168, 85, 247, 0.35),
-    0 0 28px rgba(56, 189, 248, 0.2),
+    0 0 18px rgba(34, 197, 94, 0.35),
+    0 0 28px rgba(0, 255, 136, 0.2),
     var(--shadow);
 }
 
