@@ -45,6 +45,10 @@
         }),
       });
       emit("onLog", "Channel connected successfully.");
+      try {
+        const current = await getState();
+        emit("onState", current);
+      } catch (_) {}
     } catch (error) {
       emit("onLog", `Channel connect failed: ${error.message || error}`);
     }
