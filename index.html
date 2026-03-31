@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -10,27 +10,29 @@
     <div id="login-screen" class="screen">
       <div class="card auth-card">
         <h1>Ganga Digital Automation</h1>
-        <p>Production YouTube automation dashboard</p>
+        <p>Sign in to manage Dashboard, Video Library, Channels and Automation.</p>
         <button id="google-login-btn" class="btn btn-primary">Login with Google</button>
       </div>
     </div>
 
     <div id="app-screen" class="app hidden">
       <aside class="sidebar">
-        <div class="brand">GDA</div>
+        <div class="brand-wrap">
+          <div class="brand">GDA</div>
+          <div class="brand-sub">Automation Studio</div>
+        </div>
         <nav>
           <button class="nav-link active" data-page="dashboard">Dashboard</button>
+          <button class="nav-link" data-page="library">Video Library</button>
           <button class="nav-link" data-page="channels">Channels</button>
-          <button class="nav-link" data-page="upload">Upload</button>
-          <button class="nav-link" data-page="scheduler">Scheduler</button>
-          <button class="nav-link" data-page="settings">Settings</button>
+          <button class="nav-link" data-page="automation">Automation Panel</button>
         </nav>
       </aside>
 
       <main class="main">
         <header class="topbar card">
           <div>
-            <div class="top-title">Automation Control Panel</div>
+            <div class="top-title">Ganga Digital Control Panel</div>
             <div id="user-email" class="muted">-</div>
           </div>
           <button id="logout-btn" class="btn btn-secondary">Logout</button>
@@ -44,12 +46,26 @@
             <div class="card stat"><span>Connected Channels</span><strong id="stat-connected">0</strong></div>
           </div>
           <div class="card">
-            <h3>Automation</h3>
-            <div class="row gap">
-              <button id="start-automation-btn" class="btn btn-primary">Start Automation</button>
-              <button id="stop-automation-btn" class="btn btn-secondary">Stop Automation</button>
+            <h3>Automation Status</h3>
+            <p id="automation-status" class="muted">Loading...</p>
+          </div>
+        </section>
+
+        <section id="page-library" class="page">
+          <div class="card">
+            <h3>Video Library</h3>
+            <div class="grid two">
+              <input id="upload-title" placeholder="Video Title" />
+              <input id="upload-tags" placeholder="Tags (comma separated)" />
+              <textarea id="upload-description" placeholder="Video Description"></textarea>
+              <input id="upload-file" type="file" accept="video/*" />
+              <button id="upload-btn" class="btn btn-primary">Add Video To Library</button>
             </div>
-            <p id="automation-status" class="muted"></p>
+            <p id="upload-result" class="muted"></p>
+          </div>
+          <div class="card">
+            <h3>Library Items</h3>
+            <select id="schedule-video"></select>
           </div>
         </section>
 
@@ -60,50 +76,36 @@
               <input id="channel-name" placeholder="Channel Name" />
               <input id="channel-client-id" placeholder="Google Client ID" />
               <input id="channel-client-secret" placeholder="Google Client Secret" type="password" />
-              <button id="create-channel-btn" class="btn btn-primary">Connect YouTube Channel</button>
+              <button id="create-channel-btn" class="btn btn-primary">Connect Channel</button>
             </div>
           </div>
           <div class="card">
-            <h3>Channels</h3>
+            <h3>Connected Channels</h3>
             <div id="channels-list" class="list"></div>
           </div>
         </section>
 
-        <section id="page-upload" class="page">
+        <section id="page-automation" class="page">
           <div class="card">
-            <h3>Upload Video</h3>
-            <div class="grid two">
-              <input id="upload-title" placeholder="Title" />
-              <input id="upload-tags" placeholder="Tags (comma-separated)" />
-              <textarea id="upload-description" placeholder="Description"></textarea>
-              <input id="upload-file" type="file" accept="video/*" />
-              <button id="upload-btn" class="btn btn-primary">Upload to Queue</button>
+            <h3>Automation Panel</h3>
+            <div class="row gap">
+              <button id="start-automation-btn" class="btn btn-primary">Start Automation</button>
+              <button id="stop-automation-btn" class="btn btn-secondary">Stop Automation</button>
+              <button id="refresh-btn" class="btn btn-secondary">Refresh Data</button>
             </div>
-            <p id="upload-result" class="muted"></p>
           </div>
-        </section>
-
-        <section id="page-scheduler" class="page">
           <div class="card">
-            <h3>Add Schedule</h3>
+            <h3>Schedule Video</h3>
             <div class="grid two">
               <select id="schedule-channel"></select>
-              <select id="schedule-video"></select>
               <input id="schedule-datetime" type="datetime-local" />
               <button id="add-schedule-btn" class="btn btn-primary">Add Schedule</button>
             </div>
           </div>
           <div class="card">
-            <h3>Scheduled Videos</h3>
+            <h3>Scheduled Queue</h3>
             <div id="schedules-list" class="list"></div>
-          </div>
-        </section>
-
-        <section id="page-settings" class="page">
-          <div class="card">
-            <h3>Settings</h3>
             <p class="muted">Backend URL: <span id="backend-url"></span></p>
-            <button id="refresh-btn" class="btn btn-secondary">Refresh Data</button>
           </div>
         </section>
 
@@ -114,3 +116,4 @@
     <script type="module" src="/app.js"></script>
   </body>
 </html>
+

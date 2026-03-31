@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "https://ganga-backend-production.up.railway.app";
+﻿const DEFAULT_BASE_URL = "https://ganga-backend-production.up.railway.app";
 
 export const API_BASE_URL = (window.localStorage.getItem("backend_url") || DEFAULT_BASE_URL).replace(/\/+$/, "");
 
@@ -67,3 +67,4 @@ export const api = {
     body: formData,
   }),
 };
+

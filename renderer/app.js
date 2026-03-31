@@ -1,4 +1,4 @@
-import { api, API_BASE_URL } from "/lib/api.js";
+ï»¿import { api, API_BASE_URL } from "/lib/api.js";
 
 const state = {
   channels: [],
@@ -160,7 +160,7 @@ function renderSchedules() {
     .map((s) => {
       const channelName = s.channel?.name || s.channel_id;
       const videoName = s.video?.name || s.video_id;
-      return `<div class="item"><strong>${videoName}</strong><div class="muted">${channelName} · ${new Date(s.scheduled_at).toLocaleString()} · ${s.status}</div></div>`;
+      return `<div class="item"><strong>${videoName}</strong><div class="muted">${channelName} Â· ${new Date(s.scheduled_at).toLocaleString()} Â· ${s.status}</div></div>`;
     })
     .join("");
 }
@@ -340,3 +340,4 @@ async function boot() {
 }
 
 boot();
+
