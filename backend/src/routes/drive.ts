@@ -357,8 +357,8 @@ export function registerDriveRoutes(app: App) {
     "/api/drive/folder-videos",
     async (request: FastifyRequest<{ Body: DriveFolderVideosBody }>, reply: FastifyReply) => {
       const folderLink = String(request.body?.folderLink || "").trim();
-      const driveApiKey = String(request.body?.driveApiKey || "").trim();
       const userId = getRequestUserId(request);
+      const driveApiKey = String(request.body?.driveApiKey || "").trim();
       const fallbackFolder = await app.db.query.drive_connected_folders.findFirst({
         where: eq(schema.drive_connected_folders.user_id, userId),
       });
@@ -376,7 +376,8 @@ export function registerDriveRoutes(app: App) {
       let pageToken = "";
 
       try {
-        if (driveApiKey) {
+        const oauthConnection = await getOAuthConnection(app, userId);
+        if (driveApiKey && !oauthConnection) {
           do {
             const { response, payload } = await listFolderVideosByApiKey(folderId, driveApiKey, pageToken);
             if (!response.ok) {
