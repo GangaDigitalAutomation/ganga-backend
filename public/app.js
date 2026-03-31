@@ -1417,20 +1417,9 @@ async function fetchDriveVideos(options = {}) {
     if (!silent) setDriveFolderImportResult('Connect Google Drive first.', true);
     return;
   }
-  const rawInput = document.getElementById('drive-folder-link-input')?.value?.trim() || '';
-  const inputLinks = rawInput
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const persistedLinks = Array.isArray(state.data?.settings?.driveFolderLinks) ? state.data.settings.driveFolderLinks : [];
-  let links = Array.from(new Set([...(state.driveFolders || []), ...persistedLinks, ...inputLinks]))
+  await loadConnectedDriveFolders();
+  let links = Array.from(new Set([...(state.driveFolders || [])]))
     .filter((link) => extractDriveFolderId(link));
-
-  if (!links.length) {
-    await loadConnectedDriveFolders();
-    links = Array.from(new Set([...(state.driveFolders || [])]))
-      .filter((link) => extractDriveFolderId(link));
-  }
   if (!links.length) {
     if (!silent) setDriveFolderImportResult('Connect a Google Drive folder first.', true);
     return;
