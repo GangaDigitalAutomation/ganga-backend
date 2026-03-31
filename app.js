@@ -1413,6 +1413,10 @@ async function refreshUpdateStatus() {
 
 async function fetchDriveVideos(options = {}) {
   const { silent = false } = options;
+  if (!state.driveAuth?.connected) {
+    if (!silent) setDriveFolderImportResult('Connect Google Drive first.', true);
+    return;
+  }
   const rawInput = document.getElementById('drive-folder-link-input')?.value?.trim() || '';
   const inputLinks = rawInput
     .split(/\r?\n|,/)
@@ -2221,6 +2225,11 @@ async function refreshDriveAuthStatus() {
 }
 
 async function refreshDriveFolderOptions() {
+  if (!state.driveAuth?.connected) {
+    state.driveFolderOptions = [];
+    updateDriveFolderSelect([]);
+    return;
+  }
   try {
     const response = await window.api.listDriveFolders();
     const folders = Array.isArray(response?.folders) ? response.folders : [];
