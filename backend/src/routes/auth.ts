@@ -31,7 +31,7 @@ function resolveYoutubeRedirectUri() {
   if (fallback && fallback.includes("/api/auth/google/callback")) {
     return fallback.replace("/api/auth/google/callback", "/auth/google/callback");
   }
-  return fallback;
+  return "https://ganga-backend-production.up.railway.app/auth/google/callback";
 }
 
 async function upsertUser(app: App, email: string, name?: string | null) {
@@ -111,9 +111,6 @@ export function registerAuthRoutes(app: App) {
       }
 
       const redirectUri = resolveYoutubeRedirectUri();
-      if (!redirectUri) {
-        return reply.status(400).send("Missing YOUTUBE_REDIRECT_URI");
-      }
 
       const channel = await app.db.query.channels.findFirst({
         where: eq(schema.channels.id, channelId),
@@ -134,6 +131,7 @@ export function registerAuthRoutes(app: App) {
         access_type: "offline",
         state: channelId,
       });
+      app.logger.info({ channelId, redirectUri, url }, "Generated channel OAuth URL");
       return reply.redirect(url);
     },
   );
@@ -151,9 +149,7 @@ export function registerAuthRoutes(app: App) {
       }
 
       const redirectUri = resolveYoutubeRedirectUri();
-      if (!redirectUri) {
-        return reply.status(400).type("text/html").send("<h3>Missing YOUTUBE_REDIRECT_URI.</h3>");
-      }
+      app.logger.info({ channelId, redirectUri }, "Channel OAuth callback redirect URI");
 
       const channel = await app.db.query.channels.findFirst({
         where: eq(schema.channels.id, channelId),
