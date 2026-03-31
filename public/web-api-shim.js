@@ -28,6 +28,33 @@
     window.history.replaceState({}, "", `${url.pathname}${url.search}`);
   }
 
+  async function handleChannelOAuthCallback() {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const channelId = url.searchParams.get("channel_id") || state;
+    if (!code || !channelId) return;
+
+    try {
+      await request(`/api/channels/${encodeURIComponent(channelId)}/oauth-callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          redirect_uri: `${window.location.origin}/dashboard`,
+        }),
+      });
+      emit("onLog", "Channel connected successfully.");
+    } catch (error) {
+      emit("onLog", `Channel connect failed: ${error.message || error}`);
+    }
+
+    ["code", "state", "channel_id", "scope", "authuser", "prompt"].forEach((key) => {
+      url.searchParams.delete(key);
+    });
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+  }
+
   function getToken() {
     return localStorage.getItem(TOKEN_KEY) || "";
   }
@@ -250,8 +277,12 @@
       if (channel.youtube_channel_url) window.open(channel.youtube_channel_url, "_blank");
       return { success: true };
     },
-    async getChannelToken(_id) {
-      window.location.href = `${BASE_URL}/api/auth/google/start`;
+    async getChannelToken(id) {
+      const redirectUri = `${window.location.origin}/dashboard`;
+      const response = await request(`/api/channels/${encodeURIComponent(id)}/oauth-url?redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(id)}`);
+      if (response?.url) {
+        window.location.href = response.url;
+      }
       return { success: true };
     },
     async startDriveAuth() {
@@ -359,6 +390,7 @@
   };
 
   parseTokenFromUrl();
+  handleChannelOAuthCallback();
   window.api = api;
 
   setInterval(async () => {

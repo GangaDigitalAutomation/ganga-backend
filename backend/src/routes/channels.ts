@@ -372,6 +372,7 @@ export function registerChannelRoutes(app: App) {
         required: ['redirect_uri'],
         properties: {
           redirect_uri: { type: 'string' },
+          state: { type: 'string' },
         },
       },
       response: {
@@ -389,9 +390,9 @@ export function registerChannelRoutes(app: App) {
         },
       },
     },
-  }, async (request: FastifyRequest<{ Params: { id: string }; Querystring: { redirect_uri: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Params: { id: string }; Querystring: { redirect_uri: string; state?: string } }>, reply: FastifyReply) => {
     const { id } = request.params;
-    const { redirect_uri } = request.query;
+    const { redirect_uri, state } = request.query;
     app.logger.info({ channelId: id }, 'Building OAuth URL');
 
     const channel = await app.db.query.channels.findFirst({
@@ -413,6 +414,9 @@ export function registerChannelRoutes(app: App) {
       access_type: 'offline',
       prompt: 'consent',
     });
+    if (state) {
+      params.set('state', state);
+    }
 
     const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     app.logger.info({ channelId: id }, 'OAuth URL generated');
