@@ -2,118 +2,292 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ganga Digital Automation</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="login-screen" class="screen">
-      <div class="card auth-card">
-        <h1>Ganga Digital Automation</h1>
-        <p>Sign in to manage Dashboard, Video Library, Channels and Automation.</p>
-        <button id="google-login-btn" class="btn btn-primary">Login with Google</button>
-      </div>
-    </div>
-
-    <div id="app-screen" class="app hidden">
+    <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand-wrap">
-          <div class="brand">GDA</div>
-          <div class="brand-sub">Automation Studio</div>
+        <div class="brand">
+          <div class="brand-logo">GDA</div>
+          <div>
+            <h1>Ganga Digital</h1>
+            <p>Automation Studio</p>
+          </div>
         </div>
-        <nav>
+        <nav class="nav">
           <button class="nav-link active" data-page="dashboard">Dashboard</button>
           <button class="nav-link" data-page="library">Video Library</button>
           <button class="nav-link" data-page="channels">Channels</button>
-          <button class="nav-link" data-page="automation">Automation Panel</button>
+          <button class="nav-link" data-page="scheduling">Automation Panel</button>
         </nav>
+        <div class="sidebar-footer">
+          <div class="status-pill hidden" id="internet-status" style="display: none;"></div>
+        </div>
       </aside>
 
-      <main class="main">
-        <header class="topbar card">
-          <div>
-            <div class="top-title">Ganga Digital Control Panel</div>
-            <div id="user-email" class="muted">-</div>
+      <main class="content">
+        <section class="page active" id="page-dashboard">
+          <div class="page-header">
+            <h2>Dashboard</h2>
           </div>
-          <button id="logout-btn" class="btn btn-secondary">Logout</button>
-        </header>
 
-        <section id="page-dashboard" class="page active">
-          <div class="grid stats">
-            <div class="card stat"><span>Total Channels</span><strong id="stat-channels">0</strong></div>
-            <div class="card stat"><span>Total Videos</span><strong id="stat-videos">0</strong></div>
-            <div class="card stat"><span>Scheduled Videos</span><strong id="stat-scheduled">0</strong></div>
-            <div class="card stat"><span>Connected Channels</span><strong id="stat-connected">0</strong></div>
+          <div class="stats-top-grid">
+            <div class="glass-card stat-card">
+              <p class="label">Total Channels</p>
+              <p class="value" id="stat-channels">0</p>
+            </div>
+            <div class="glass-card stat-card">
+              <p class="label">Total Videos</p>
+              <p class="value" id="stat-videos-available">0</p>
+            </div>
+            <div class="glass-card stat-card">
+              <p class="label">Daily Videos Count</p>
+              <p class="value" id="stat-videos-per-day">0</p>
+            </div>
+            <div class="glass-card stat-card">
+              <p class="label">Today Uploaded Videos</p>
+              <p class="value" id="stat-today-uploaded">0</p>
+            </div>
           </div>
-          <div class="card">
-            <h3>Automation Status</h3>
-            <p id="automation-status" class="muted">Loading...</p>
+
+          <div class="glass-card automation-upgrade-card">
+            <div class="automation-upgrade-head">
+              <h3>Cloud Automation (v2)</h3>
+              <span class="status-pill" id="cloud-upgrade-status">Checking...</span>
+            </div>
+            <p class="hint">Google Drive queue + GitHub Actions hourly uploader integration.</p>
+            <div class="automation-upgrade-grid">
+              <div>
+                <p class="label">Folders Ready</p>
+                <p class="value" id="upgrade-folders-ready">--</p>
+              </div>
+              <div>
+                <p class="label">API Module</p>
+                <p class="value" id="upgrade-api-ready">--</p>
+              </div>
+              <div>
+                <p class="label">Workflow Ready</p>
+                <p class="value" id="upgrade-workflow-ready">--</p>
+              </div>
+              <div>
+                <p class="label">Queue Videos</p>
+                <p class="value" id="upgrade-queue-count">0</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-card logs">
+            <h3>Channel Upload Tracker</h3>
+            <div id="channel-upload-tracker" class="channel-upload-tracker"></div>
+          </div>
+
+          <div class="glass-card logs">
+            <h3>System Logs</h3>
+            <div id="log-list"></div>
           </div>
         </section>
 
-        <section id="page-library" class="page">
-          <div class="card">
-            <h3>Video Library</h3>
-            <div class="grid two">
-              <input id="upload-title" placeholder="Video Title" />
-              <input id="upload-tags" placeholder="Tags (comma separated)" />
-              <textarea id="upload-description" placeholder="Video Description"></textarea>
-              <input id="upload-file" type="file" accept="video/*" />
-              <button id="upload-btn" class="btn btn-primary">Add Video To Library</button>
+        <section class="page" id="page-library">
+          <div class="page-header">
+            <div>
+              <h2>Video Library</h2>
+              <p class="section-count" id="library-video-count">Total Videos: 0</p>
             </div>
-            <p id="upload-result" class="muted"></p>
           </div>
-          <div class="card">
-            <h3>Library Items</h3>
-            <select id="schedule-video"></select>
+
+          <div class="glass-card tags-card">
+            <h3>Add Folder</h3>
+            <div class="tags-row" style="margin-top: 8px;">
+              <input type="text" id="drive-folder-link-input" placeholder="Paste Google Drive Folder Link" />
+              <input type="password" id="drive-api-key-input" placeholder="Drive API Key" />
+            </div>
+            <div class="tags-row" style="margin-top: 10px;">
+              <button class="primary" id="import-drive-folder">Connect Folder</button>
+              <button class="secondary" id="refresh-drive-folder">Refresh</button>
+            </div>
+            <p id="drive-folder-loading" class="hint hidden">Fetching latest videos...</p>
+            <p id="drive-folder-error" class="error-msg" style="margin-top: 6px;"></p>
+          </div>
+
+          <div class="glass-card tags-card">
+            <h3>Content Settings</h3>
+            <p class="hint" style="margin: 6px 0 12px 0;">Configure common content settings for uploads.</p>
+            <div class="content-settings-stack">
+              <div class="settings-block">
+                <label class="settings-label" style="margin-top: 6px;">Titles</label>
+                <textarea id="global-titles-input" rows="8" class="settings-textarea large" placeholder="Title 1&#10;Title 2&#10;Title 3"></textarea>
+                <p id="titles-error" class="error-msg" style="margin-top: 6px;"></p>
+              </div>
+
+              <div class="settings-block">
+                <label class="settings-label" style="margin-top: 10px;">Description</label>
+                <textarea id="global-description-input" rows="6" class="settings-textarea xlarge" placeholder="Default description for uploads"></textarea>
+              </div>
+
+              <div class="settings-block">
+                <label class="settings-label" style="margin-top: 10px;">Tags</label>
+                <div id="tags-chip-wrap" class="tag-input-wrap content-tags-wrap">
+                  <div id="tags-chip-list" class="tag-chip-list"></div>
+                  <input type="text" id="tags-entry-input" placeholder="Type tag and press Enter" />
+                </div>
+              </div>
+              <input type="hidden" id="global-tags-input" />
+
+              <button class="primary" id="save-content-settings">Save Content Settings</button>
+              <p id="metadata-error" class="error-msg" style="margin-top: 6px;"></p>
+            </div>
+          </div>
+
+          <div id="library-content-state" class="state-container">
+            <p class="section-count" id="library-video-count-top">Total Videos: 0</p>
+            <div id="drive-folders-container"></div>
+            <div id="video-empty-state" class="glass-card hidden">
+              <p class="hint">No videos loaded from Drive yet.</p>
+            </div>
           </div>
         </section>
 
-        <section id="page-channels" class="page">
-          <div class="card">
-            <h3>Connect YouTube Channel</h3>
-            <div class="grid two">
-              <input id="channel-name" placeholder="Channel Name" />
-              <input id="channel-client-id" placeholder="Google Client ID" />
-              <input id="channel-client-secret" placeholder="Google Client Secret" type="password" />
-              <button id="create-channel-btn" class="btn btn-primary">Connect Channel</button>
+        <section class="page" id="page-channels">
+          <div class="page-header">
+            <div>
+              <h2>Channels</h2>
+              <p class="section-count" id="channels-total-count">Total Channels: 0</p>
+            </div>
+            <div class="header-actions">
+              <button class="primary" id="add-channel">Add Channel</button>
             </div>
           </div>
-          <div class="card">
-            <h3>Connected Channels</h3>
-            <div id="channels-list" class="list"></div>
-          </div>
+
+          <div class="channels-list" id="channel-list"></div>
         </section>
 
-        <section id="page-automation" class="page">
-          <div class="card">
-            <h3>Automation Panel</h3>
-            <div class="row gap">
-              <button id="start-automation-btn" class="btn btn-primary">Start Automation</button>
-              <button id="stop-automation-btn" class="btn btn-secondary">Stop Automation</button>
-              <button id="refresh-btn" class="btn btn-secondary">Refresh Data</button>
+        <section class="page" id="page-scheduling">
+          <div class="page-header">
+            <h2>Automation Panel</h2>
+          </div>
+
+          <div class="glass-card automation-top-panel" id="automation-top-panel">
+            <div class="automation-top-row" id="automation-top-start-row">
+              <button class="primary" id="start-automation">START AUTOMATION</button>
+            </div>
+            <div class="automation-top-row hidden" id="automation-top-running-row">
+              <div class="automation-time-group">
+                <p class="label">Start Date</p>
+                <p class="value small" id="automation-start-date">--</p>
+              </div>
+              <div class="automation-time-group">
+                <p class="label">Start Time</p>
+                <p class="value small" id="automation-start-time">--</p>
+              </div>
+              <button class="secondary" id="stop-automation">STOP AUTOMATION</button>
+            </div>
+            <div class="automation-top-row hidden" id="automation-top-stopped-row">
+              <p class="value small danger-text">Automation Stopped</p>
+              <div class="automation-time-group">
+                <p class="label">Stop Date</p>
+                <p class="value small" id="automation-stop-date">--</p>
+              </div>
+              <div class="automation-time-group">
+                <p class="label">Stop Time</p>
+                <p class="value small" id="automation-stop-time">--</p>
+              </div>
             </div>
           </div>
-          <div class="card">
-            <h3>Schedule Video</h3>
-            <div class="grid two">
-              <select id="schedule-channel"></select>
-              <input id="schedule-datetime" type="datetime-local" />
-              <button id="add-schedule-btn" class="btn btn-primary">Add Schedule</button>
+
+          <div class="glass-card schedule-controls">
+            <div style="width: 100%;">
+              <label style="margin-bottom: 8px;">Videos per Day</label>
+              <div class="horizontal-box video-risk-warning" id="schedule-videos-box"></div>
+              <input type="hidden" id="schedule-videos" value="1" />
             </div>
           </div>
-          <div class="card">
-            <h3>Scheduled Queue</h3>
-            <div id="schedules-list" class="list"></div>
-            <p class="muted">Backend URL: <span id="backend-url"></span></p>
+
+          <div class="schedule-actions" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
+            <button class="primary" id="auto-schedule-btn">AUTO SCHEDULE</button>
+            <button class="secondary" id="save-plan-btn">SAVE PLAN</button>
+          </div>
+
+          <div class="schedule-layout" style="margin-bottom: 16px;">
+            <div class="glass-card schedule-channel-pane">
+              <h3>Channels</h3>
+              <p class="hint" style="margin-top: 4px;">Select a connected channel to edit its slots.</p>
+              <div id="schedule-channel-list" class="channel-stack schedule-channel-list" style="margin-top: 12px;"></div>
+            </div>
+
+            <div class="glass-card" id="slot-system-container">
+              <h3 id="schedule-slots-title">Schedule Slots</h3>
+              <p class="hint" style="margin-top: 4px;">Click AUTO SCHEDULE to generate slots for each channel separately.</p>
+              <div id="schedule-items" class="slot-items-container" style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px; max-height: 500px; overflow-y: auto; padding-right: 8px;"></div>
+            </div>
+          </div>
+
+          <div class="glass-card schedule-panel">
+            <h3>Automation running</h3>
+            <p id="automation-running-text" class="label">Checking...</p>
+            <p id="automation-pending-text" class="hint" style="margin-top: 10px;">Today Uploaded Videos: 0</p>
           </div>
         </section>
-
-        <div id="global-message" class="message"></div>
       </main>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <div id="channel-modal" class="modal-overlay hidden">
+      <div class="glass-card modal-box">
+        <div class="modal-header">
+          <h3>Connect a New Channel</h3>
+          <button class="secondary close-btn" id="close-modal">&times;</button>
+        </div>
+        <div class="modal-content">
+          <label>YouTube Channel URL
+            <input type="text" id="channel-url" placeholder="https://youtube.com/@channel..." />
+          </label>
+          <div class="form-grid">
+            <label>Client ID
+              <input type="text" id="client-id" placeholder="Enter Client ID" />
+            </label>
+            <label>Client Secret
+              <input type="password" id="client-secret" placeholder="Enter Client Secret" />
+            </label>
+            <label>API Key
+              <input type="password" id="api-key" placeholder="Google API Key (optional)" />
+            </label>
+          </div>
+
+          <div class="oauth-section">
+            <h4>OAuth JSON Import</h4>
+            <div id="oauth-drop-zone" class="drop-zone sm-drop-zone">
+              <div class="drop-icon" style="font-size: 24px; margin-bottom: 8px;">JSON</div>
+              <p>Drop JSON file here</p>
+              <button class="secondary" id="pick-oauth" style="margin-top: 12px; padding: 6px 12px; font-size: 12px;">Select JSON File</button>
+              <p id="oauth-file-name" class="file-name"></p>
+            </div>
+            <label>Or Paste JSON Data (Backup)
+              <textarea id="oauth-json-text" rows="4" placeholder="{ ... }"></textarea>
+            </label>
+            <input type="hidden" id="oauth-json" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <p id="channel-form-error" class="error-msg"></p>
+          <button class="primary w-full" id="connect-channel" style="width: 100%">Connect Channel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="connect-loading-overlay" class="loading-overlay hidden" aria-live="polite" aria-busy="true">
+      <div class="loading-content">
+        <div class="spinner" aria-hidden="true"></div>
+        <h3>Connecting to YouTube...</h3>
+        <p>Please wait, do not close the app</p>
+      </div>
+    </div>
+
+    <div id="channel-toast" class="channel-toast hidden" role="status" aria-live="polite"></div>
+
+    <script src="web-api-shim.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>
 
