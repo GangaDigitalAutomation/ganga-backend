@@ -142,6 +142,7 @@ export function registerAuthRoutes(app: App) {
     async (request: FastifyRequest<{ Querystring: { code?: string; state?: string } }>, reply: FastifyReply) => {
       const code = String(request.query?.code || "").trim();
       const channelId = String(request.query?.state || "").trim();
+      app.logger.info({ query: request.query }, "Channel OAuth callback query");
       app.logger.info({ codePresent: Boolean(code), channelId }, "Channel OAuth callback");
 
       if (!code || !channelId) {
@@ -159,34 +160,23 @@ export function registerAuthRoutes(app: App) {
       }
 
       try {
-        const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            code,
-            client_id: channel.client_id,
-            client_secret: channel.client_secret,
-            redirect_uri: redirectUri,
-            grant_type: "authorization_code",
-          }).toString(),
-        });
+        const oauth = new google.auth.OAuth2(channel.client_id, channel.client_secret, redirectUri);
+        app.logger.info({ channelId, redirectUri }, "Exchanging code for tokens");
+        const { tokens } = await oauth.getToken(code);
+        app.logger.info({ channelId, tokenKeys: Object.keys(tokens || {}) }, "OAuth tokens received");
+        oauth.setCredentials(tokens);
 
-        if (!tokenResponse.ok) {
-          throw new Error("Failed to exchange code for tokens");
+        if (!tokens?.access_token) {
+          throw new Error("Missing access_token in OAuth response");
         }
 
-        const tokenData = (await tokenResponse.json()) as {
-          access_token: string;
-          refresh_token?: string;
-          expires_in: number;
-          scope?: string;
-        };
-
-        const token_expiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
+        const token_expiry = tokens.expiry_date
+          ? new Date(tokens.expiry_date).toISOString()
+          : new Date(Date.now() + 3600 * 1000).toISOString();
 
         const channelResponse = await fetch(
           "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
-          { headers: { Authorization: `Bearer ${tokenData.access_token}` } },
+          { headers: { Authorization: `Bearer ${tokens.access_token}` } },
         );
         if (!channelResponse.ok) {
           throw new Error("Failed to fetch YouTube channel info");
@@ -201,8 +191,8 @@ export function registerAuthRoutes(app: App) {
         await app.db
           .update(schema.channels)
           .set({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token || channel.refresh_token,
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token || channel.refresh_token,
             token_expiry,
             youtube_channel_id,
             youtube_channel_url,
@@ -220,8 +210,13 @@ export function registerAuthRoutes(app: App) {
         const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL);
         return reply.redirect(`${frontendUrl}/dashboard?channel_connected=1&channel_id=${encodeURIComponent(channelId)}`);
       } catch (error) {
-        app.logger.error({ err: error, channelId }, "Channel OAuth callback failed");
-        return reply.status(400).type("text/html").send("<h3>OAuth callback failed.</h3>");
+        const errPayload =
+          (error as any)?.response?.data ||
+          (error as any)?.data ||
+          (error as any)?.message ||
+          error;
+        app.logger.error({ err: errPayload, channelId }, "Channel OAuth callback failed");
+        return reply.status(400).type("text/html").send(`<h3>OAuth callback failed: ${String(errPayload)}</h3>`);
       }
     },
   );
