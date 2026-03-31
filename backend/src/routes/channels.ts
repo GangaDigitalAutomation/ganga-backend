@@ -3,7 +3,83 @@ import { eq, desc } from 'drizzle-orm';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 
+type OAuthValidateBody = {
+  oauth_json_text?: string;
+  oauth_json?: unknown;
+};
+
+function extractOAuthClient(jsonInput: unknown) {
+  const parsed = typeof jsonInput === 'string' ? JSON.parse(jsonInput) : jsonInput;
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Invalid JSON: root object is required');
+  }
+
+  const root = parsed as Record<string, unknown>;
+  const source = (root.web || root.installed) as Record<string, unknown> | undefined;
+  if (!source || typeof source !== 'object') {
+    throw new Error('Invalid OAuth JSON: expected "web" or "installed" object');
+  }
+
+  const client_id = String(source.client_id || '').trim();
+  const client_secret = String(source.client_secret || '').trim();
+  if (!client_id || !client_secret) {
+    throw new Error('Invalid OAuth JSON: client_id and client_secret are required');
+  }
+
+  return {
+    client_id,
+    client_secret,
+    project_id: String(source.project_id || '').trim() || null,
+    client_type: root.web ? 'web' : 'installed',
+  };
+}
+
 export function registerChannelRoutes(app: App) {
+  // POST /api/channels/oauth-json/validate
+  app.fastify.post('/api/channels/oauth-json/validate', {
+    schema: {
+      description: 'Validate Google OAuth client JSON and extract required fields',
+      tags: ['channels'],
+      body: {
+        type: 'object',
+        properties: {
+          oauth_json_text: { type: 'string' },
+          oauth_json: { type: ['object', 'string'] },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            valid: { type: 'boolean' },
+            client_id: { type: 'string' },
+            client_secret: { type: 'string' },
+            project_id: { type: ['string', 'null'] },
+            client_type: { type: 'string' },
+          },
+        },
+        400: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request: FastifyRequest<{ Body: OAuthValidateBody }>, reply: FastifyReply) => {
+    try {
+      const body = request.body || {};
+      const raw = body.oauth_json_text || body.oauth_json;
+      if (!raw) {
+        return reply.status(400).send({ error: 'Missing oauth_json_text or oauth_json' });
+      }
+      const extracted = extractOAuthClient(raw);
+      return { valid: true, ...extracted };
+    } catch (error) {
+      return reply.status(400).send({ error: error instanceof Error ? error.message : 'Invalid OAuth JSON' });
+    }
+  });
+
   // GET /api/channels
   app.fastify.get('/api/channels', {
     schema: {

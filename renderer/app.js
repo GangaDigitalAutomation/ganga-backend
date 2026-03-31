@@ -1902,6 +1902,7 @@ const connectOverlay = document.getElementById('connect-loading-overlay');
 const channelToast = document.getElementById('channel-toast');
 let channelConnectInProgress = false;
 let channelToastTimer = null;
+let oauthJsonValidationError = '';
 
 function setChannelFormMessage(message, type = 'error') {
   const errorEl = document.getElementById('channel-form-error');
@@ -1961,6 +1962,7 @@ function resetChannelForm() {
   document.getElementById('oauth-json').value = '';
   document.getElementById('oauth-json-text').value = '';
   document.getElementById('oauth-file-name').textContent = '';
+  oauthJsonValidationError = '';
   setChannelFormMessage('');
 }
 
@@ -1974,17 +1976,154 @@ document.getElementById('close-modal')?.addEventListener('click', () => {
   channelModal.classList.add('hidden');
 });
 
+function parseGoogleOAuthJson(input) {
+  let parsed;
+  try {
+    parsed = typeof input === 'string' ? JSON.parse(input) : input;
+  } catch {
+    throw new Error('Invalid JSON format.');
+  }
+  const source = parsed?.web || parsed?.installed;
+  if (!source || typeof source !== 'object') {
+    throw new Error('Invalid OAuth JSON: expected "web" or "installed" object.');
+  }
+  const clientId = String(source.client_id || '').trim();
+  const clientSecret = String(source.client_secret || '').trim();
+  if (!clientId || !clientSecret) {
+    throw new Error('Invalid OAuth JSON: client_id and client_secret are required.');
+  }
+  return {
+    parsed,
+    clientId,
+    clientSecret,
+    projectId: String(source.project_id || '').trim(),
+    clientType: parsed?.web ? 'web' : 'installed',
+  };
+}
+
+function applyOAuthJsonToForm(parsedPayload, fileName = '') {
+  const clientIdEl = document.getElementById('client-id');
+  const clientSecretEl = document.getElementById('client-secret');
+  const oauthTextEl = document.getElementById('oauth-json-text');
+  const oauthPathEl = document.getElementById('oauth-json');
+  const fileNameEl = document.getElementById('oauth-file-name');
+
+  clientIdEl.value = parsedPayload.clientId || '';
+  clientSecretEl.value = parsedPayload.clientSecret || '';
+  oauthTextEl.value = JSON.stringify(parsedPayload.parsed, null, 2);
+  oauthPathEl.value = fileName || 'oauth-client.json';
+  fileNameEl.textContent = fileName || 'oauth-client.json';
+  oauthJsonValidationError = '';
+}
+
+async function validateOAuthJsonWithBackend(parsedPayload) {
+  if (typeof window.api?.validateOAuthJson !== 'function') return parsedPayload;
+  const response = await window.api.validateOAuthJson({
+    oauth_json_text: JSON.stringify(parsedPayload.parsed),
+  });
+  if (!response?.valid) {
+    throw new Error(response?.error || 'OAuth JSON validation failed.');
+  }
+  return {
+    ...parsedPayload,
+    clientId: response.client_id || parsedPayload.clientId,
+    clientSecret: response.client_secret || parsedPayload.clientSecret,
+  };
+}
+
+async function importOAuthJsonFile(file) {
+  if (!file) return;
+  const text = await file.text();
+  const localParsed = parseGoogleOAuthJson(text);
+  const validated = await validateOAuthJsonWithBackend(localParsed);
+  applyOAuthJsonToForm(validated, file.name || '');
+  setChannelFormMessage('OAuth JSON imported successfully.', 'success');
+}
+
+function ensureOAuthFileInput() {
+  let input = document.getElementById('oauth-json-file-input');
+  if (input) return input;
+  input = document.createElement('input');
+  input.id = 'oauth-json-file-input';
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', async (event) => {
+    const file = event.target?.files?.[0];
+    try {
+      await importOAuthJsonFile(file);
+    } catch (error) {
+      oauthJsonValidationError = error.message || 'OAuth JSON import failed.';
+      setChannelFormMessage(oauthJsonValidationError);
+    } finally {
+      input.value = '';
+    }
+  });
+  return input;
+}
+
+function setupOAuthDropZone() {
+  const zone = document.getElementById('oauth-drop-zone');
+  if (!zone) return;
+
+  ['dragenter', 'dragover'].forEach((eventName) => {
+    zone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      zone.classList.add('active');
+    });
+  });
+  ['dragleave', 'drop'].forEach((eventName) => {
+    zone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      zone.classList.remove('active');
+    });
+  });
+  zone.addEventListener('drop', async (event) => {
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    try {
+      await importOAuthJsonFile(file);
+    } catch (error) {
+      oauthJsonValidationError = error.message || 'OAuth JSON import failed.';
+      setChannelFormMessage(oauthJsonValidationError);
+    }
+  });
+}
+
 document.getElementById('pick-oauth').addEventListener('click', async () => {
-  const filePath = await window.api.selectOAuthJson();
-  if (filePath) {
-    document.getElementById('oauth-json').value = filePath;
-    const parts = filePath.split(/[\\/]/);
-    document.getElementById('oauth-file-name').textContent = parts[parts.length - 1];
+  try {
+    const result = await window.api.selectOAuthJson();
+    if (result && typeof result === 'object' && result.oauthJsonText) {
+      const localParsed = parseGoogleOAuthJson(result.oauthJsonText);
+      const validated = await validateOAuthJsonWithBackend(localParsed);
+      applyOAuthJsonToForm(validated, result.fileName || result.path || '');
+      setChannelFormMessage('OAuth JSON imported successfully.', 'success');
+      return;
+    }
+    if (typeof result === 'string' && result.trim()) {
+      document.getElementById('oauth-json').value = result;
+      const parts = result.split(/[\\/]/);
+      document.getElementById('oauth-file-name').textContent = parts[parts.length - 1];
+      setChannelFormMessage('');
+      return;
+    }
+    ensureOAuthFileInput().click();
+  } catch (error) {
+    oauthJsonValidationError = error.message || 'OAuth JSON import failed.';
+    setChannelFormMessage(oauthJsonValidationError);
   }
 });
 
+setupOAuthDropZone();
+
 document.getElementById('connect-channel').addEventListener('click', async () => {
   if (channelConnectInProgress) return;
+
+  if (oauthJsonValidationError) {
+    setChannelFormMessage(oauthJsonValidationError);
+    return;
+  }
 
   const payload = {
     clientId: document.getElementById('client-id').value.trim(),

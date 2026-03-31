@@ -234,7 +234,37 @@
     async getUpdateStatus() { return { stage: "idle", message: "Web mode" }; },
     async installDownloadedUpdate() { return { ok: false }; },
     async openExternal(url) { window.open(url, "_blank"); return true; },
-    async selectOAuthJson() { return ""; },
+    async selectOAuthJson() {
+      return new Promise((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json,application/json";
+        input.style.display = "none";
+        document.body.appendChild(input);
+        input.addEventListener("change", async () => {
+          const file = input.files?.[0];
+          if (!file) {
+            input.remove();
+            resolve("");
+            return;
+          }
+          const text = await file.text();
+          input.remove();
+          resolve({
+            fileName: file.name,
+            oauthJsonText: text,
+          });
+        }, { once: true });
+        input.click();
+      });
+    },
+    async validateOAuthJson(payload) {
+      return request("/api/channels/oauth-json/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+    },
 
     onLog(cb) { callbacks.onLog.push(cb); },
     onProgress(cb) { callbacks.onProgress.push(cb); },
