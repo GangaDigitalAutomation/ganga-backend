@@ -2,6 +2,7 @@
   const BASE_URL = "https://ganga-backend-production.up.railway.app";
   const SETTINGS_KEY = "gda_web_settings";
   const TOKEN_KEY = "auth_token";
+  const STATE_CACHE_KEY = "gda_web_state_cache";
 
   const callbacks = {
     onLog: [],
@@ -45,6 +46,20 @@
     return next;
   }
 
+  function getStateCache() {
+    try {
+      return JSON.parse(localStorage.getItem(STATE_CACHE_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveStateCache(patch) {
+    const next = { ...getStateCache(), ...patch };
+    localStorage.setItem(STATE_CACHE_KEY, JSON.stringify(next));
+    return next;
+  }
+
   async function request(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     const token = getToken();
@@ -63,13 +78,29 @@
   }
 
   async function getState() {
-    const [stats, channelsResp, videosResp, schedulesResp, uploadStatus] = await Promise.all([
-      request("/api/stats").catch(() => ({ total_channels: 0, total_videos: 0, total_scheduled: 0, connected_channels: 0 })),
-      request("/api/channels").catch(() => ({ channels: [] })),
-      request("/api/videos").catch(() => ({ videos: [] })),
-      request("/api/schedules").catch(() => ({ schedules: [] })),
-      request("/api/upload/status").catch(() => ({ is_running: false, pending: 0, uploaded_today: 0 })),
-    ]);
+    const cache = getStateCache();
+    const errors = [];
+
+    const stats = await request("/api/stats").catch((error) => {
+      errors.push(`Stats sync failed: ${error.message || error}`);
+      return cache.stats || { total_channels: 0, total_videos: 0, total_scheduled: 0, connected_channels: 0 };
+    });
+    const channelsResp = await request("/api/channels").catch((error) => {
+      errors.push(`Channels sync failed: ${error.message || error}`);
+      return { channels: cache.raw_channels || [] };
+    });
+    const videosResp = await request("/api/videos").catch((error) => {
+      errors.push(`Videos sync failed: ${error.message || error}`);
+      return { videos: cache.raw_videos || [] };
+    });
+    const schedulesResp = await request("/api/schedules").catch((error) => {
+      errors.push(`Schedules sync failed: ${error.message || error}`);
+      return { schedules: cache.raw_schedules || [] };
+    });
+    const uploadStatus = await request("/api/upload/status").catch((error) => {
+      errors.push(`Upload status sync failed: ${error.message || error}`);
+      return cache.upload_status || { is_running: false, pending: 0, uploaded_today: 0 };
+    });
 
     const settings = getSettings();
 
@@ -99,7 +130,7 @@
       video_name: s.video?.name || "",
     }));
 
-    return {
+    const statePayload = {
       channels,
       videos,
       schedules,
@@ -122,6 +153,23 @@
         connected_channels: stats.connected_channels || 0,
       },
     };
+
+    saveStateCache({
+      raw_channels: channelsResp.channels || [],
+      raw_videos: videosResp.videos || [],
+      raw_schedules: schedulesResp.schedules || [],
+      upload_status: uploadStatus,
+      stats: statePayload.stats,
+      channels: statePayload.channels,
+      videos: statePayload.videos,
+      schedules: statePayload.schedules,
+    });
+
+    if (errors.length) {
+      emit("onLog", errors.join(" | "));
+    }
+
+    return statePayload;
   }
 
   const api = {
@@ -183,11 +231,17 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      const cache = getStateCache();
+      const rawChannels = Array.isArray(cache.raw_channels) ? cache.raw_channels : [];
+      saveStateCache({ raw_channels: [created, ...rawChannels] });
       emit("onLog", `Channel added: ${created.name || name}`);
       return created;
     },
     async deleteChannel(id) {
       const res = await request(`/api/channels/${id}`, { method: "DELETE" });
+      const cache = getStateCache();
+      const rawChannels = Array.isArray(cache.raw_channels) ? cache.raw_channels : [];
+      saveStateCache({ raw_channels: rawChannels.filter((ch) => String(ch?.id || "") !== String(id)) });
       emit("onLog", "Channel removed");
       return res;
     },
