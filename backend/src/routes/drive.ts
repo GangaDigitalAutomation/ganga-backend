@@ -103,9 +103,18 @@ async function getDriveAccessToken(app: App, userId: string) {
   }
 
   const oauth = getDriveOAuthClient();
+  let decryptedAccess = "";
+  let decryptedRefresh = "";
+  try {
+    decryptedAccess = decryptToken(connection.access_token);
+    decryptedRefresh = decryptToken(connection.refresh_token);
+  } catch (error) {
+    throw new Error("Drive tokens are invalid. Please reconnect Google Drive.");
+  }
+
   oauth.setCredentials({
-    access_token: decryptToken(connection.access_token),
-    refresh_token: decryptToken(connection.refresh_token),
+    access_token: decryptedAccess,
+    refresh_token: decryptedRefresh,
     expiry_date: connection.token_expiry ? new Date(connection.token_expiry).getTime() : undefined,
   });
   const refreshed = await oauth.getAccessToken();
@@ -113,7 +122,7 @@ async function getDriveAccessToken(app: App, userId: string) {
   if (!accessToken) {
     throw new Error("Failed to refresh Drive access token.");
   }
-  if (accessToken !== decryptToken(connection.access_token) || oauth.credentials.expiry_date) {
+  if (accessToken !== decryptedAccess || oauth.credentials.expiry_date) {
     const tokenExpiry = oauth.credentials.expiry_date
       ? new Date(oauth.credentials.expiry_date).toISOString()
       : connection.token_expiry;
@@ -264,7 +273,8 @@ export function registerDriveRoutes(app: App) {
       });
       const payload = (await response.json().catch(() => ({}))) as GoogleDriveListResponse;
       if (!response.ok) {
-        return reply.status(response.status).send({ error: payload?.error?.message || "Failed to list Drive folders." });
+        const message = payload?.error?.message || `Drive API error (${response.status})`;
+        return reply.status(400).send({ error: message });
       }
       const folders = (payload.files || []).map((file) => ({
         id: String(file.id || ""),
@@ -393,7 +403,8 @@ export function registerDriveRoutes(app: App) {
             });
             const payload = (await response.json().catch(() => ({}))) as GoogleDriveListResponse;
             if (!response.ok) {
-              return reply.status(response.status).send({ error: payload?.error?.message || "Failed to fetch Drive folder videos." });
+              const message = payload?.error?.message || `Drive API error (${response.status})`;
+              return reply.status(400).send({ error: message });
             }
             collected.push(...(Array.isArray(payload.files) ? payload.files : []));
             pageToken = String(payload.nextPageToken || "");
