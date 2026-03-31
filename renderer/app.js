@@ -398,7 +398,7 @@ function renderVideos() {
     if (folder.error) {
       const err = document.createElement('p');
       err.className = 'error-msg';
-      err.textContent = 'Failed to load videos. Retrying...';
+      err.textContent = folder.error || 'Failed to load videos. Retrying...';
       card.appendChild(err);
       container.appendChild(card);
       return;
@@ -1634,11 +1634,18 @@ document.getElementById('import-drive-folder')?.addEventListener('click', async 
     });
     const linkInput = document.getElementById('drive-folder-link-input');
     if (linkInput) linkInput.value = folder.link || '';
-    state.driveFolders = folder.link ? [folder.link] : [];
-    await window.api.updateSettings({ driveFolderLinks: state.driveFolders });
+    const next = Array.from(new Set([...(state.driveFolders || []), folder.link].filter(Boolean)));
+    state.driveFolders = next;
+    await window.api.updateSettings({ driveFolderLinks: next });
     const selectedLabel = document.getElementById('drive-folder-selected');
     if (selectedLabel) {
-      selectedLabel.textContent = `Selected folder: ${folder.name || folder.link || 'Drive Folder'}`;
+      const names = next
+        .map((link) => {
+          const match = (state.driveFolderOptions || []).find((item) => String(item?.link || '') === link);
+          return match?.name || link || 'Drive Folder';
+        })
+        .filter(Boolean);
+      selectedLabel.textContent = `Selected folders: ${names.join(', ')}`;
     }
   } catch (error) {
     setDriveFolderImportResult(error.message || 'Failed to connect Drive folder', true);
@@ -2235,7 +2242,8 @@ async function loadConnectedDriveFolders() {
       state.driveFolders = folders.map((folder) => folder.link || '').filter(Boolean);
       const selectedLabel = document.getElementById('drive-folder-selected');
       if (selectedLabel) {
-        selectedLabel.textContent = `Selected folder: ${folders[0].name || folders[0].link || 'Drive Folder'}`;
+        const names = folders.map((folder) => folder.name || folder.link || 'Drive Folder');
+        selectedLabel.textContent = `Selected folders: ${names.join(', ')}`;
       }
     }
   } catch (_) {}
