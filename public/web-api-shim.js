@@ -28,6 +28,18 @@
     window.history.replaceState({}, "", `${url.pathname}${url.search}`);
   }
 
+  async function handleChannelConnectedFlag() {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("channel_connected");
+    if (!connected) return;
+    try {
+      const current = await getState();
+      emit("onState", current);
+    } catch (_) {}
+    ["channel_connected", "channel_id"].forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+  }
+
   async function handleChannelOAuthCallback() {
     const url = new URL(window.location.href);
     const code = url.searchParams.get("code");
@@ -282,11 +294,7 @@
       return { success: true };
     },
     async getChannelToken(id) {
-      const redirectUri = `${window.location.origin}/dashboard`;
-      const response = await request(`/api/channels/${encodeURIComponent(id)}/oauth-url?redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(id)}`);
-      if (response?.url) {
-        window.location.href = response.url;
-      }
+      window.location.href = `${BASE_URL}/auth/google?channelId=${encodeURIComponent(id)}`;
       return { success: true };
     },
     async startDriveAuth() {
@@ -395,6 +403,7 @@
 
   parseTokenFromUrl();
   handleChannelOAuthCallback();
+  handleChannelConnectedFlag();
   window.api = api;
 
   setInterval(async () => {

@@ -17,6 +17,23 @@ function normalizeFrontendUrl(raw: string | undefined) {
   return absolute.replace(/\/+$/, "");
 }
 
+function normalizeBackendUrl(raw: string | undefined) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  const absolute = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return absolute.replace(/\/+$/, "");
+}
+
+function resolveYoutubeRedirectUri() {
+  const explicit = String(process.env.YOUTUBE_REDIRECT_URI || "").trim();
+  if (explicit) return explicit;
+  const fallback = String(process.env.GOOGLE_REDIRECT_URI || "").trim();
+  if (fallback && fallback.includes("/api/auth/google/callback")) {
+    return fallback.replace("/api/auth/google/callback", "/auth/google/callback");
+  }
+  return fallback;
+}
+
 async function upsertUser(app: App, email: string, name?: string | null) {
   const normalized = normalizeEmail(email);
   const existing = await app.db
@@ -83,6 +100,135 @@ export function registerAuthRoutes(app: App) {
     });
     return reply.redirect(url);
   });
+
+  // Channel OAuth start (YouTube connect)
+  app.fastify.get(
+    "/auth/google",
+    async (request: FastifyRequest<{ Querystring: { channelId?: string } }>, reply: FastifyReply) => {
+      const channelId = String(request.query?.channelId || "").trim();
+      if (!channelId) {
+        return reply.status(400).send("Missing channelId");
+      }
+
+      const redirectUri = resolveYoutubeRedirectUri();
+      if (!redirectUri) {
+        return reply.status(400).send("Missing YOUTUBE_REDIRECT_URI");
+      }
+
+      const channel = await app.db.query.channels.findFirst({
+        where: eq(schema.channels.id, channelId),
+      });
+      if (!channel) {
+        return reply.status(404).send("Channel not found");
+      }
+
+      app.logger.info({ channelId, redirectUri }, "Starting channel OAuth");
+
+      const oauth = new google.auth.OAuth2(channel.client_id, channel.client_secret, redirectUri);
+      const url = oauth.generateAuthUrl({
+        scope: [
+          "https://www.googleapis.com/auth/youtube.upload",
+          "https://www.googleapis.com/auth/drive.readonly",
+        ],
+        prompt: "consent",
+        access_type: "offline",
+        state: channelId,
+      });
+      return reply.redirect(url);
+    },
+  );
+
+  // Channel OAuth callback (YouTube connect)
+  app.fastify.get(
+    "/auth/google/callback",
+    async (request: FastifyRequest<{ Querystring: { code?: string; state?: string } }>, reply: FastifyReply) => {
+      const code = String(request.query?.code || "").trim();
+      const channelId = String(request.query?.state || "").trim();
+      app.logger.info({ codePresent: Boolean(code), channelId }, "Channel OAuth callback");
+
+      if (!code || !channelId) {
+        return reply.status(400).type("text/html").send("<h3>Missing OAuth callback parameters.</h3>");
+      }
+
+      const redirectUri = resolveYoutubeRedirectUri();
+      if (!redirectUri) {
+        return reply.status(400).type("text/html").send("<h3>Missing YOUTUBE_REDIRECT_URI.</h3>");
+      }
+
+      const channel = await app.db.query.channels.findFirst({
+        where: eq(schema.channels.id, channelId),
+      });
+      if (!channel) {
+        return reply.status(404).type("text/html").send("<h3>Channel not found.</h3>");
+      }
+
+      try {
+        const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: channel.client_id,
+            client_secret: channel.client_secret,
+            redirect_uri: redirectUri,
+            grant_type: "authorization_code",
+          }).toString(),
+        });
+
+        if (!tokenResponse.ok) {
+          throw new Error("Failed to exchange code for tokens");
+        }
+
+        const tokenData = (await tokenResponse.json()) as {
+          access_token: string;
+          refresh_token?: string;
+          expires_in: number;
+          scope?: string;
+        };
+
+        const token_expiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
+
+        const channelResponse = await fetch(
+          "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+          { headers: { Authorization: `Bearer ${tokenData.access_token}` } },
+        );
+        if (!channelResponse.ok) {
+          throw new Error("Failed to fetch YouTube channel info");
+        }
+        const channelData = (await channelResponse.json()) as { items: Array<{ id: string }> };
+        const youtube_channel_id = channelData.items[0]?.id;
+        if (!youtube_channel_id) {
+          throw new Error("YouTube channel ID not found");
+        }
+        const youtube_channel_url = `https://youtube.com/channel/${youtube_channel_id}`;
+
+        await app.db
+          .update(schema.channels)
+          .set({
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token || channel.refresh_token,
+            token_expiry,
+            youtube_channel_id,
+            youtube_channel_url,
+            status: "connected",
+          })
+          .where(eq(schema.channels.id, channelId));
+
+        await app.db.insert(schema.upload_logs).values({
+          channel_id: channelId,
+          level: "info",
+          message: `Channel connected: ${channel.name}`,
+          created_at: new Date().toISOString(),
+        });
+
+        const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL);
+        return reply.redirect(`${frontendUrl}/dashboard?channel_connected=1&channel_id=${encodeURIComponent(channelId)}`);
+      } catch (error) {
+        app.logger.error({ err: error, channelId }, "Channel OAuth callback failed");
+        return reply.status(400).type("text/html").send("<h3>OAuth callback failed.</h3>");
+      }
+    },
+  );
 
   app.fastify.get(
     "/api/auth/google/callback",
