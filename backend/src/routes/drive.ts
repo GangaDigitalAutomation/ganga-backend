@@ -72,6 +72,38 @@ type GoogleDriveListResponse = {
   error?: { message?: string };
 };
 
+function deriveExtension(name: string, mimeType?: string) {
+  const cleanName = String(name || "").trim();
+  const fromName = cleanName.includes(".") ? cleanName.split(".").pop() : "";
+  if (fromName) return fromName.toLowerCase();
+  const mime = String(mimeType || "").toLowerCase();
+  if (mime.startsWith("video/")) {
+    return mime.split("/")[1] || "mp4";
+  }
+  return "mp4";
+}
+
+async function upsertDriveVideo(app: App, file: GoogleDriveFile) {
+  const driveId = String(file.id || "").trim();
+  if (!driveId) return null;
+  const filePath = `drive://${driveId}`;
+  const existing = await app.db.query.videos.findFirst({
+    where: eq(schema.videos.file_path, filePath),
+  });
+  if (existing) return existing;
+
+  const name = String(file.name || "Untitled Video");
+  const sizeBytes = Number(file.size || 0);
+  const extension = deriveExtension(name, file.mimeType);
+  const [inserted] = await app.db.insert(schema.videos).values({
+    name,
+    file_path: filePath,
+    size_bytes: Number.isFinite(sizeBytes) ? sizeBytes : 0,
+    extension,
+  }).returning();
+  return inserted || null;
+}
+
 async function listFolderVideosByApiKey(folderId: string, driveApiKey: string, pageToken = "") {
   const query = new URLSearchParams({
     key: driveApiKey,
@@ -412,7 +444,26 @@ export function registerDriveRoutes(app: App) {
           } while (pageToken);
         }
 
-        const videos = collected.map((file) => ({
+        const persisted = [];
+        for (const file of collected) {
+          const row = await upsertDriveVideo(app, file);
+          if (!row) continue;
+          persisted.push({
+            id: row.id,
+            drive_file_id: String(file.id || ""),
+            drive_link:
+              file.webViewLink || `https://drive.google.com/file/d/${String(file.id || "")}/view`,
+            title: String(file.name || "Untitled Video"),
+            original_file_name: String(file.name || "Untitled Video"),
+            size: Number(file.size || 0),
+            mime_type: String(file.mimeType || ""),
+            created_at: file.createdTime || null,
+            modified_at: file.modifiedTime || null,
+            status: "pending",
+          });
+        }
+
+        const fallback = collected.map((file) => ({
           id: `drive-${String(file.id || "")}`,
           drive_file_id: String(file.id || ""),
           drive_link:
@@ -430,8 +481,8 @@ export function registerDriveRoutes(app: App) {
           success: true,
           folder_id: folderId,
           folder_link: effectiveFolderLink,
-          count: videos.length,
-          videos,
+          count: persisted.length || fallback.length,
+          videos: persisted.length ? persisted : fallback,
         };
       } catch (error) {
         return reply

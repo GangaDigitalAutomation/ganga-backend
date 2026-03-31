@@ -145,6 +145,15 @@
       return cache.upload_status || { is_running: false, pending: 0, uploaded_today: 0 };
     });
 
+    const contentSettings = await request("/api/content-settings").catch((error) => {
+      errors.push(`Content settings sync failed: ${error.message || error}`);
+      return { settings: cache.content_settings || {} };
+    });
+    const automationSettings = await request("/api/automation-settings").catch((error) => {
+      errors.push(`Automation settings sync failed: ${error.message || error}`);
+      return { settings: cache.automation_settings || {} };
+    });
+
     const settings = getSettings();
 
     const channels = (channelsResp.channels || []).map((c) => ({
@@ -178,16 +187,20 @@
       videos,
       schedules,
       settings: {
-        videosPerDay: Number(settings.videosPerDay || 1),
+        videosPerDay: Number(contentSettings.settings?.videos_per_day || settings.videosPerDay || 1),
         automationRunning: Boolean(uploadStatus.is_running),
         automationStartedAt: settings.automationStartedAt || "",
         automationStoppedAt: settings.automationStoppedAt || "",
-        autoScheduleEnabled: Boolean(settings.autoScheduleEnabled),
+        autoScheduleEnabled: Boolean(automationSettings.settings?.auto_schedule_enabled),
         driveFolderLinks: Array.isArray(settings.driveFolderLinks) ? settings.driveFolderLinks : [],
-        titlePool: Array.isArray(settings.titlePool) ? settings.titlePool : [],
-        globalTags: String(settings.globalTags || ""),
-        globalDescription: String(settings.globalDescription || ""),
-        channelSlotPlans: settings.channelSlotPlans || {},
+        titlePool: Array.isArray(contentSettings.settings?.titles) ? contentSettings.settings.titles : [],
+        globalTags: Array.isArray(contentSettings.settings?.tags)
+          ? contentSettings.settings.tags.join(", ")
+          : String(settings.globalTags || ""),
+        globalDescription: String(contentSettings.settings?.description || settings.globalDescription || ""),
+        channelSlotPlans: automationSettings.settings?.channel_slot_plans || {},
+        slots: automationSettings.settings?.slots || [],
+        automationSlots: automationSettings.settings?.automation_slots || [],
       },
       stats: {
         total_channels: stats.total_channels || channels.length,
@@ -202,6 +215,8 @@
       raw_videos: videosResp.videos || [],
       raw_schedules: schedulesResp.schedules || [],
       upload_status: uploadStatus,
+      content_settings: contentSettings.settings || {},
+      automation_settings: automationSettings.settings || {},
       stats: statePayload.stats,
       channels: statePayload.channels,
       videos: statePayload.videos,
@@ -222,8 +237,26 @@
     async updateSettings(patch) {
       return saveSettings(patch || {});
     },
+    async saveContentSettings(payload) {
+      return request("/api/content-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+    },
+    async saveAutomationSettings(payload) {
+      return request("/api/automation-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+    },
     async setVideosPerDay(value) {
-      saveSettings({ videosPerDay: value });
+      await request("/api/content-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videos_per_day: value }),
+      });
       return { success: true };
     },
     async setChannelSelected({ channelId, selected }) {

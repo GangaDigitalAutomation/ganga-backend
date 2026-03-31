@@ -3,7 +3,9 @@ import type { App } from "../index.js";
 import {
   generateAutoSchedule,
   getContentSettings,
+  getAutomationSettings,
   saveContentSettings,
+  saveAutomationSettings,
   saveManualSlots,
 } from "../services/autoPlannerEngine.js";
 
@@ -31,9 +33,21 @@ type SaveSlotsBody = {
   }>;
 };
 
+type AutomationSettingsBody = {
+  auto_schedule_enabled?: boolean;
+  channel_slot_plans?: Record<string, any>;
+  slots?: any[];
+  automation_slots?: string[];
+};
+
 export function registerAutoPlannerRoutes(app: App) {
   app.fastify.get("/api/content-settings", async () => {
     const settings = await getContentSettings();
+    return { settings };
+  });
+
+  app.fastify.get("/api/automation-settings", async () => {
+    const settings = await getAutomationSettings();
     return { settings };
   });
 
@@ -48,6 +62,22 @@ export function registerAutoPlannerRoutes(app: App) {
         return reply.status(400).send({
           success: false,
           error: error instanceof Error ? error.message : "Failed to save content settings",
+        });
+      }
+    },
+  );
+
+  app.fastify.put(
+    "/api/automation-settings",
+    async (request: FastifyRequest<{ Body: AutomationSettingsBody }>, reply: FastifyReply) => {
+      try {
+        const settings = await saveAutomationSettings(request.body || {});
+        return { success: true, settings };
+      } catch (error) {
+        app.logger.error({ err: error }, "Failed to save automation settings");
+        return reply.status(400).send({
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to save automation settings",
         });
       }
     },

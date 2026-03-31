@@ -8,6 +8,8 @@ import { enqueueUploadJob, getQueueMode } from "../queue/uploadQueue.js";
 import { computeUploadAtForSchedule } from "./humanTiming.js";
 import { publishUploadEvent } from "./eventBus.js";
 import { decryptToken } from "./tokenCrypto.js";
+import { getContentSettings } from "./autoPlannerEngine.js";
+import { getScheduleTitle } from "./autoPlannerStore.js";
 
 function jitterMs(minMs: number, maxMs: number) {
   const min = Math.min(minMs, maxMs);
@@ -256,7 +258,7 @@ async function ensureChannelQuota(app: App, channelId: string) {
   });
 }
 
-async function realGoogleUpload(app: App, channel: any, schedule: any, video: any) {
+async function realGoogleUpload(app: App, channel: any, schedule: any, video: any, overrideTitle?: string | null) {
   const clientId = process.env.GOOGLE_CLIENT_ID || "";
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || "urn:ietf:wg:oauth:2.0:oob";
@@ -297,18 +299,29 @@ async function realGoogleUpload(app: App, channel: any, schedule: any, video: an
   }
 
   const youtube = google.youtube({ version: "v3", auth: oauth2 });
-  const defaultTags = (process.env.YOUTUBE_DEFAULT_TAGS || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const contentSettings = await getContentSettings().catch(() => ({
+    titles: [],
+    description: "",
+    tags: [],
+    videos_per_day: 5,
+    start_time: "04:00",
+  }));
+  const defaultTags = contentSettings.tags?.length
+    ? contentSettings.tags
+    : (process.env.YOUTUBE_DEFAULT_TAGS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  const description = contentSettings.description || process.env.YOUTUBE_DEFAULT_DESCRIPTION || "";
+  const title = overrideTitle || video.name;
   const publishAt = schedule.publish_at || schedule.scheduled_at;
   const response = await youtube.videos.insert({
     part: ["snippet", "status"],
     uploadType: "resumable",
     requestBody: {
       snippet: {
-        title: video.name,
-        description: process.env.YOUTUBE_DEFAULT_DESCRIPTION || "",
+        title,
+        description,
         tags: defaultTags,
       },
       status: {
@@ -377,7 +390,8 @@ export async function processScheduleUpload(app: App, scheduleId: string, upload
     await ensureChannelQuota(app, channel.id);
     let youtubeVideoId = "";
     if (canUseRealGoogleUpload(channel, app)) {
-      youtubeVideoId = await realGoogleUpload(app, channel, schedule, video);
+      const scheduleTitle = await getScheduleTitle(scheduleId);
+      youtubeVideoId = await realGoogleUpload(app, channel, schedule, video, scheduleTitle);
     } else {
       youtubeVideoId = await simulateUpload(app, scheduleId, channel.id, video);
     }

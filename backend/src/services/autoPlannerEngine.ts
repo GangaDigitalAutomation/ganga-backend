@@ -1,7 +1,7 @@
 import { and, eq, inArray, like } from "drizzle-orm";
 import * as schema from "../db/schema/schema.js";
 import type { App } from "../index.js";
-import type { ContentSettings } from "./autoPlannerStore.js";
+import type { AutomationSettings, ContentSettings } from "./autoPlannerStore.js";
 import { readPlannerStore, updatePlannerStore } from "./autoPlannerStore.js";
 import { computePublishDelaySeries, computeUploadAtForSchedule, getPublishSlots } from "./humanTiming.js";
 
@@ -54,13 +54,9 @@ function localIsoFromDateAndTime(dateStr: string, timeStr: string, minuteOffset 
 
 function pickTitles(titles: string[], total: number) {
   if (!titles.length) {
-    return Array.from({ length: total }, (_, i) => `Auto Upload ${i + 1}`);
+    throw new Error("No titles provided. Add titles before scheduling.");
   }
   const pool = titles.slice();
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
   const out: string[] = [];
   for (let i = 0; i < total; i += 1) {
     out.push(pool[i % pool.length]);
@@ -174,6 +170,33 @@ export async function saveContentSettings(input: Partial<ContentSettings>) {
     }
   });
   return updated.content_settings;
+}
+
+export async function getAutomationSettings() {
+  const store = await readPlannerStore();
+  return store.automation_settings;
+}
+
+export async function saveAutomationSettings(input: Partial<AutomationSettings>) {
+  const updated = await updatePlannerStore(async (store) => {
+    if (input.auto_schedule_enabled !== undefined) {
+      store.automation_settings.auto_schedule_enabled = Boolean(input.auto_schedule_enabled);
+    }
+    if (input.channel_slot_plans !== undefined) {
+      store.automation_settings.channel_slot_plans =
+        input.channel_slot_plans && typeof input.channel_slot_plans === "object" ? input.channel_slot_plans : {};
+    }
+    if (input.slots !== undefined) {
+      store.automation_settings.slots = Array.isArray(input.slots) ? input.slots : [];
+    }
+    if (input.automation_slots !== undefined) {
+      store.automation_settings.automation_slots = Array.isArray(input.automation_slots)
+        ? input.automation_slots.map((v) => String(v))
+        : [];
+    }
+    store.automation_settings.last_saved_at = new Date().toISOString();
+  });
+  return updated.automation_settings;
 }
 
 export async function generateAutoSchedule(app: App, input: GenerateInput = {}) {

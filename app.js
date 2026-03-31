@@ -31,6 +31,7 @@ const state = {
 };
 
 let driveAutoRefreshTimer = null;
+let autosaveTimer = null;
 
 const pages = document.querySelectorAll('.page');
 const navLinks = document.querySelectorAll('.nav-link');
@@ -934,6 +935,10 @@ function renderAutoScheduleButton() {
   if (!btn) return;
   btn.textContent = state.autoScheduleEnabled ? 'AUTO SCHEDULE: ON' : 'AUTO SCHEDULE: OFF';
   btn.classList.toggle('active', state.autoScheduleEnabled);
+  const hasTitles = Array.isArray(state.data?.settings?.titlePool) && state.data.settings.titlePool.length > 0;
+  const hasVideos = getDriveVideoPool().length > 0;
+  btn.disabled = !(hasTitles && hasVideos);
+  btn.title = btn.disabled ? 'Add titles and connect Drive videos first.' : '';
 }
 
 function renderSlots() {
@@ -957,7 +962,7 @@ function renderSlots() {
   state.slots = state.channelSlotPlans[activeChannelId];
   if (title) title.textContent = `Schedule Slots (${getScheduleChannelName(activeChannel)})`;
 
-  const unassignedVideos = (state.data?.videos || []).filter(v => v.status === 'pending');
+  const unassignedVideos = getDriveVideoPool();
   if (!state.slots.length) {
     container.innerHTML = '<p class="hint">No slots found. Choose videos/day and click AUTO SCHEDULE.</p>';
     return;
@@ -1024,7 +1029,10 @@ function renderSlots() {
           <label>Video</label>
           <select class="slot-video" data-index="${index}">
             <option value="">-- Select Video --</option>
-            ${unassignedVideos.map(v => `<option value="${v.id || v.path}" ${slot.videoId === (v.id || v.path) ? 'selected' : ''}>${escapeHtml(v.title || v.original_file_name || v.name)}</option>`).join('')}
+            ${unassignedVideos.map(v => {
+              const vid = v.id || v.drive_file_id || v.path;
+              return `<option value="${vid}" ${slot.videoId === vid ? 'selected' : ''}>${escapeHtml(v.title || v.original_file_name || v.name)}</option>`;
+            }).join('')}
           </select>
         </div>
         <div class="slot-field">
@@ -1121,6 +1129,7 @@ function renderSlots() {
       state.channelSlotPlans[activeChannelId][index].publish_date = iso;
       state.slots = state.channelSlotPlans[activeChannelId];
       applyValidationUi();
+      scheduleAutomationSave();
     };
 
     const updatePublishTimeFromParts = () => {
@@ -1132,6 +1141,7 @@ function renderSlots() {
       state.channelSlotPlans[activeChannelId][index].publish_time = value24;
       state.slots = state.channelSlotPlans[activeChannelId];
       applyValidationUi();
+      scheduleAutomationSave();
     };
 
     const updateUploadDateFromParts = () => {
@@ -1144,6 +1154,7 @@ function renderSlots() {
       state.channelSlotPlans[activeChannelId][index].auto_upload_enabled = false;
       state.slots = state.channelSlotPlans[activeChannelId];
       applyValidationUi();
+      scheduleAutomationSave();
     };
 
     const updateUploadTimeFromParts = () => {
@@ -1156,6 +1167,7 @@ function renderSlots() {
       state.channelSlotPlans[activeChannelId][index].auto_upload_enabled = false;
       state.slots = state.channelSlotPlans[activeChannelId];
       applyValidationUi();
+      scheduleAutomationSave();
     };
 
     const bindTypedDate = (ddSel, mmSel, yyyySel, onUpdate) => {
@@ -1215,17 +1227,20 @@ function renderSlots() {
 
     card.querySelector('.slot-video').addEventListener('change', e => { 
       state.channelSlotPlans[activeChannelId][index].videoId = e.target.value;
-      const vid = unassignedVideos.find(v => (v.id || v.path) === e.target.value);
+      const vid = unassignedVideos.find(v => (v.id || v.drive_file_id || v.path) === e.target.value);
       if (vid && !state.channelSlotPlans[activeChannelId][index].title) {
         state.channelSlotPlans[activeChannelId][index].title = vid.title || vid.original_file_name || '';
         card.querySelector('.slot-title').value = state.channelSlotPlans[activeChannelId][index].title;
       }
       state.slots = state.channelSlotPlans[activeChannelId];
+      applyValidationUi();
+      scheduleAutomationSave();
     });
     card.querySelector('.slot-title').addEventListener('input', e => {
       state.channelSlotPlans[activeChannelId][index].title = e.target.value;
       state.slots = state.channelSlotPlans[activeChannelId];
       applyValidationUi();
+      scheduleAutomationSave();
     });
     applyValidationUi();
     container.appendChild(card);
@@ -1245,16 +1260,27 @@ document.getElementById('auto-schedule-btn')?.addEventListener('click', () => {
     return;
   }
 
+  const baseTitlePool = Array.isArray(state.data?.settings?.titlePool)
+    ? [...state.data.settings.titlePool]
+    : String(state.data?.settings?.titlePool || '').split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+  if (!baseTitlePool.length) {
+    addLog('Auto Schedule blocked: add titles in Content Settings first.');
+    return;
+  }
+
+  const unassigned = getDriveVideoPool();
+  if (!unassigned.length) {
+    addLog('Auto Schedule blocked: no Google Drive videos found.');
+    return;
+  }
+
   state.autoScheduleEnabled = true;
   renderAutoScheduleButton();
 
   const activeSlotNumbers = getActiveSlotNumbersByCount(perChannelCount);
   const shuffledChannels = [...channels].sort(() => Math.random() - 0.5);
-  const unassigned = (state.data?.videos || []).filter(v => v.status === 'pending');
   let videoCursor = 0;
-  const baseTitlePool = Array.isArray(state.data?.settings?.titlePool)
-    ? [...state.data.settings.titlePool]
-    : String(state.data?.settings?.titlePool || '').split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+  let titleCursor = 0;
   const usedPublishTimes = new Set();
   const usedUploadTimes = new Set();
   const tomorrow = new Date();
@@ -1344,15 +1370,12 @@ document.getElementById('auto-schedule-btn')?.addEventListener('click', () => {
 
       if (videoCursor < unassigned.length) {
         const vid = unassigned[videoCursor++];
-        slot.videoId = vid.id || vid.path;
+        slot.videoId = vid.id || vid.drive_file_id || vid.path;
         slot.title = vid.title || vid.original_file_name || '';
       }
 
-      if (baseTitlePool.length > 0) {
-        slot.title = baseTitlePool[randomInt(0, baseTitlePool.length - 1)];
-      } else if (!slot.title) {
-        slot.title = 'Automated Video Upload';
-      }
+      slot.title = baseTitlePool[titleCursor % baseTitlePool.length];
+      titleCursor += 1;
 
       plans[channelId].push(slot);
     });
@@ -1368,6 +1391,7 @@ document.getElementById('auto-schedule-btn')?.addEventListener('click', () => {
   renderScheduleChannelList();
   renderSlots();
   addLog('Auto Schedule: fixed publish slots + randomized upload windows applied for all active channels.');
+  scheduleAutomationSave();
   const totalRequired = perChannelCount * channels.length;
   if (unassigned.length < totalRequired) {
      addLog(`WARNING: Only ${unassigned.length} videos available for ${totalRequired} channel slots.`);
@@ -1385,14 +1409,15 @@ document.getElementById('save-plan-btn')?.addEventListener('click', async () => 
     const automationSlots = Array.from(new Set(
       flattened.map((slot) => slot.upload_time).filter(Boolean)
     )).sort();
-    await window.api.updateSettings({
+    await window.api.saveAutomationSettings({
+      auto_schedule_enabled: state.autoScheduleEnabled,
+      channel_slot_plans: state.channelSlotPlans,
       slots: flattened,
-      channelSlotPlans: state.channelSlotPlans,
-      automationSlots,
-      autoScheduleEnabled: state.autoScheduleEnabled,
+      automation_slots: automationSlots,
     });
     state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
     addLog('Slot plan saved successfully.');
+    setAutosaveStatus('Saved');
   } catch (err) {
     addLog(`Error saving plan: ${err.message}`);
   }
@@ -1499,6 +1524,15 @@ async function loadState() {
   }
   if (!Array.isArray(state.tagChips) || state.tagChips.length === 0) {
     state.tagChips = parseTagsFromString(state.data?.settings?.globalTags || '');
+  }
+  const titlesInput = document.getElementById('global-titles-input');
+  if (titlesInput) {
+    const titles = Array.isArray(state.data?.settings?.titlePool) ? state.data.settings.titlePool : [];
+    titlesInput.value = titles.join('\n');
+  }
+  const descriptionInput = document.getElementById('global-description-input');
+  if (descriptionInput) {
+    descriptionInput.value = String(state.data?.settings?.globalDescription || '');
   }
   await refreshDriveAuthStatus();
   await loadConnectedDriveFolders();
@@ -1786,11 +1820,10 @@ document.getElementById('save-content-settings')?.addEventListener('click', asyn
   const description = document.getElementById('global-description-input')?.value?.trim() || '';
 
   try {
-    await window.api.updateSettings({
-      titlePool: titles,
-      globalTags: tags,
-      globalDescription: description,
-      defaultDescription: description,
+    await window.api.saveContentSettings({
+      titles,
+      description,
+      tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
     });
     await window.api.autoAssignVideoTitles(titles);
     await window.api.applyGlobalMetadataToVideos();
@@ -1887,11 +1920,11 @@ document.getElementById('start-automation')?.addEventListener('click', async () 
     const automationSlots = Array.from(new Set(
       normalized.map((slot) => slot.upload_time).filter(Boolean)
     )).sort();
-    await window.api.updateSettings({
+    await window.api.saveAutomationSettings({
+      auto_schedule_enabled: state.autoScheduleEnabled,
+      channel_slot_plans: state.channelSlotPlans,
       slots: normalized,
-      channelSlotPlans: state.channelSlotPlans,
-      automationSlots,
-      autoScheduleEnabled: state.autoScheduleEnabled,
+      automation_slots: automationSlots,
     });
     state.slots = normalizeSlotPlan(state.channelSlotPlans[state.selectedScheduleChannelId] || []);
 
@@ -2029,6 +2062,52 @@ function resetChannelForm() {
   document.getElementById('oauth-file-name').textContent = '';
   oauthJsonValidationError = '';
   setChannelFormMessage('');
+}
+
+const scheduleAutomationSave = debounce(async () => {
+  try {
+    const flattened = flattenChannelSlotPlans();
+    const automationSlots = Array.from(new Set(
+      flattened.map((slot) => slot.upload_time).filter(Boolean),
+    )).sort();
+    await window.api.saveAutomationSettings({
+      auto_schedule_enabled: state.autoScheduleEnabled,
+      channel_slot_plans: state.channelSlotPlans,
+      slots: flattened,
+      automation_slots: automationSlots,
+    });
+    setAutosaveStatus('Saved');
+  } catch (error) {
+    addLog(`Auto save failed: ${error.message || error}`);
+  }
+}, 400);
+
+function debounce(fn, wait) {
+  let timer;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+function setAutosaveStatus(message) {
+  const el = document.getElementById('autosave-status');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add('active');
+  setTimeout(() => el.classList.remove('active'), 1200);
+}
+
+function getDriveVideoPool() {
+  const buckets = Object.values(state.driveFolderData || {});
+  const all = buckets.flatMap((bucket) => Array.isArray(bucket?.videos) ? bucket.videos : []);
+  const unique = new Map();
+  all.forEach((video) => {
+    const key = video.id || video.drive_file_id || video.drive_link || video.title;
+    if (!key) return;
+    if (!unique.has(key)) unique.set(key, video);
+  });
+  return Array.from(unique.values());
 }
 
 addChannelBtn.addEventListener('click', () => {

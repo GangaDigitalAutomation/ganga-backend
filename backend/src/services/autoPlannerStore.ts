@@ -10,8 +10,17 @@ export type ContentSettings = {
   start_time: string;
 };
 
+export type AutomationSettings = {
+  auto_schedule_enabled: boolean;
+  channel_slot_plans: Record<string, any>;
+  slots: any[];
+  automation_slots: string[];
+  last_saved_at: string;
+};
+
 type PlannerStore = {
   content_settings: ContentSettings;
+  automation_settings: AutomationSettings;
   rotation: {
     next_video_index: number;
   };
@@ -25,6 +34,13 @@ const DEFAULT_STORE: PlannerStore = {
     tags: [],
     videos_per_day: 5,
     start_time: "04:00",
+  },
+  automation_settings: {
+    auto_schedule_enabled: false,
+    channel_slot_plans: {},
+    slots: [],
+    automation_slots: [],
+    last_saved_at: "",
   },
   rotation: {
     next_video_index: 0,
@@ -58,6 +74,7 @@ async function ensureStoreFile() {
 function normalizeStore(raw: Partial<PlannerStore> | null | undefined): PlannerStore {
   const input = raw ?? {};
   const content = input.content_settings ?? DEFAULT_STORE.content_settings;
+  const automation = input.automation_settings ?? DEFAULT_STORE.automation_settings;
   return {
     content_settings: {
       titles: Array.isArray(content.titles) ? content.titles.map((t) => String(t).trim()).filter(Boolean) : [],
@@ -65,6 +82,15 @@ function normalizeStore(raw: Partial<PlannerStore> | null | undefined): PlannerS
       tags: Array.isArray(content.tags) ? content.tags.map((t) => String(t).trim()).filter(Boolean) : [],
       videos_per_day: Number(content.videos_per_day || 5),
       start_time: String(content.start_time || "04:00"),
+    },
+    automation_settings: {
+      auto_schedule_enabled: Boolean(automation.auto_schedule_enabled),
+      channel_slot_plans: automation.channel_slot_plans && typeof automation.channel_slot_plans === "object"
+        ? automation.channel_slot_plans
+        : {},
+      slots: Array.isArray(automation.slots) ? automation.slots : [],
+      automation_slots: Array.isArray(automation.automation_slots) ? automation.automation_slots : [],
+      last_saved_at: String(automation.last_saved_at || ""),
     },
     rotation: {
       next_video_index: Number(input.rotation?.next_video_index || 0),
