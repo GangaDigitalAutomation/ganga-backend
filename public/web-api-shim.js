@@ -201,8 +201,21 @@
       return { success: true };
     },
     async fetchDriveVideos() {
-      const videos = await request("/api/videos");
-      return { success: true, videos: videos.videos || [] };
+      const settings = getSettings();
+      const folderLink = String(arguments[0]?.folderLink || "").trim();
+      const driveApiKey = String(arguments[0]?.driveApiKey || settings.driveApiKey || "").trim();
+      if (!folderLink) {
+        throw new Error("Google Drive folder link is required.");
+      }
+      if (!driveApiKey) {
+        throw new Error("Drive API key is required.");
+      }
+      const response = await request("/api/drive/folder-videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderLink, driveApiKey }),
+      });
+      return { success: true, videos: response.videos || [] };
     },
     async uploadVideosToDrive() {
       throw new Error("Browser mode: use Video Library upload API flow");

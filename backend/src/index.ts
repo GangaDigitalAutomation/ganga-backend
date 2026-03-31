@@ -9,6 +9,7 @@ import { registerAutoPlannerRoutes } from "./routes/autoPlanner.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerDriveRoutes } from "./routes/drive.js";
 import { createCoreApp, type App } from "./core/createApp.js";
 import * as schema from "./db/schema/schema.js";
 import { ensureSchema } from "./db/bootstrap.js";
@@ -47,6 +48,7 @@ if (!app.env.databaseUrl) {
 registerHealthRoutes(app);
 registerEventRoutes(app);
 registerAuthRoutes(app);
+registerDriveRoutes(app as unknown as App);
 registerChannelRoutes(app as unknown as App);
 registerVideoRoutes(app as unknown as App);
 registerScheduleRoutes(app as unknown as App);
