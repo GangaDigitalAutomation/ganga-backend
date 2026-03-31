@@ -125,6 +125,7 @@ export function registerAuthRoutes(app: App) {
       const url = oauth.generateAuthUrl({
         scope: [
           "https://www.googleapis.com/auth/youtube.upload",
+          "https://www.googleapis.com/auth/youtube.readonly",
           "https://www.googleapis.com/auth/drive.readonly",
         ],
         prompt: "consent",
@@ -174,17 +175,12 @@ export function registerAuthRoutes(app: App) {
           ? new Date(tokens.expiry_date).toISOString()
           : new Date(Date.now() + 3600 * 1000).toISOString();
 
-        const channelResponse = await fetch(
-          "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
-          { headers: { Authorization: `Bearer ${tokens.access_token}` } },
-        );
-        if (!channelResponse.ok) {
-          throw new Error("Failed to fetch YouTube channel info");
-        }
-        const channelData = (await channelResponse.json()) as { items: Array<{ id: string }> };
-        const youtube_channel_id = channelData.items[0]?.id;
+        const youtube = google.youtube({ version: "v3", auth: oauth });
+        const channelResponse = await youtube.channels.list({ part: ["snippet"], mine: true });
+        app.logger.info({ channelId, response: channelResponse.data }, "YouTube channel response");
+        const youtube_channel_id = channelResponse.data.items?.[0]?.id;
         if (!youtube_channel_id) {
-          throw new Error("YouTube channel ID not found");
+          throw new Error("No YouTube channel found for this account");
         }
         const youtube_channel_url = `https://youtube.com/channel/${youtube_channel_id}`;
 
