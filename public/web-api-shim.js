@@ -254,20 +254,38 @@
       window.location.href = `${BASE_URL}/api/auth/google/start`;
       return { success: true };
     },
+    async startDriveAuth() {
+      return request("/api/drive/auth/start", { method: "POST" });
+    },
+    async getDriveAuthStatus() {
+      return request("/api/drive/auth/status");
+    },
+    async listDriveFolders() {
+      return request("/api/drive/folders/list", { method: "POST" });
+    },
+    async connectDriveFolder(payload) {
+      return request("/api/drive/folders/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+    },
+    async getConnectedDriveFolders() {
+      return request("/api/drive/folders/connected");
+    },
     async fetchDriveVideos() {
       const settings = getSettings();
       const folderLink = String(arguments[0]?.folderLink || "").trim();
-      const driveApiKey = String(arguments[0]?.driveApiKey || settings.driveApiKey || "").trim();
       if (!folderLink) {
         throw new Error("Google Drive folder link is required.");
       }
-      if (!driveApiKey) {
-        throw new Error("Drive API key is required.");
-      }
+      const driveApiKey = String(arguments[0]?.driveApiKey || settings.driveApiKey || "").trim();
+      const body = { folderLink };
+      if (driveApiKey) body.driveApiKey = driveApiKey;
       const response = await request("/api/drive/folder-videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderLink, driveApiKey }),
+        body: JSON.stringify(body),
       });
       return { success: true, videos: response.videos || [] };
     },

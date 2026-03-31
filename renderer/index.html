@@ -100,14 +100,23 @@
 
           <div class="glass-card tags-card">
             <h3>Add Folder</h3>
-            <div class="tags-row" style="margin-top: 8px;">
-              <input type="text" id="drive-folder-link-input" placeholder="Paste Google Drive Folder Link" />
-              <input type="password" id="drive-api-key-input" placeholder="Drive API Key" />
+            <p class="hint" id="drive-auth-status" style="margin-top: 6px;">Google Drive not connected.</p>
+            <div class="tags-row" style="margin-top: 10px;">
+              <button class="primary" id="drive-auth-connect">Connect Google Drive</button>
+              <button class="secondary" id="drive-auth-check">Check Status</button>
+            </div>
+            <div class="tags-row" style="margin-top: 10px;">
+              <select id="drive-folder-select">
+                <option value="">Select a Google Drive folder</option>
+              </select>
             </div>
             <div class="tags-row" style="margin-top: 10px;">
               <button class="primary" id="import-drive-folder">Connect Folder</button>
               <button class="secondary" id="refresh-drive-folder">Refresh</button>
             </div>
+            <input type="text" id="drive-folder-link-input" class="hidden" />
+            <input type="password" id="drive-api-key-input" class="hidden" />
+            <p id="drive-folder-selected" class="hint" style="margin-top: 6px;"></p>
             <p id="drive-folder-loading" class="hint hidden">Fetching latest videos...</p>
             <p id="drive-folder-error" class="error-msg" style="margin-top: 6px;"></p>
           </div>

@@ -101,3 +101,24 @@ export const upload_logs = pgTable("upload_logs", {
   message: text("message").notNull(),
   created_at: text("created_at").notNull().default(sql`now()::text`),
 });
+
+export const drive_oauth_connections = pgTable("drive_oauth_connections", {
+  id: uuid("id").primaryKey().$defaultFn(() => randomUUID()),
+  user_id: uuid("user_id"),
+  email: text("email"),
+  access_token: text("access_token").notNull(),
+  refresh_token: text("refresh_token").notNull(),
+  token_expiry: text("token_expiry"),
+  created_at: text("created_at").notNull().default(sql`now()::text`),
+  updated_at: text("updated_at").notNull().default(sql`now()::text`),
+});
+
+export const drive_connected_folders = pgTable("drive_connected_folders", {
+  id: uuid("id").primaryKey().$defaultFn(() => randomUUID()),
+  user_id: uuid("user_id"),
+  folder_id: text("folder_id").notNull(),
+  folder_name: text("folder_name"),
+  folder_link: text("folder_link").notNull(),
+  created_at: text("created_at").notNull().default(sql`now()::text`),
+  updated_at: text("updated_at").notNull().default(sql`now()::text`),
+});

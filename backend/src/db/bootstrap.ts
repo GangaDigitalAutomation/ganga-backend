@@ -98,6 +98,27 @@ const bootstrapSql = [
     message text not null,
     created_at text not null default ''
   );`,
+  `create table if not exists drive_oauth_connections (
+    id uuid primary key,
+    user_id uuid,
+    email text,
+    access_token text not null,
+    refresh_token text not null,
+    token_expiry text,
+    created_at text not null default '',
+    updated_at text not null default ''
+  );`,
+  `create unique index if not exists drive_oauth_user_unique_idx on drive_oauth_connections(user_id);`,
+  `create table if not exists drive_connected_folders (
+    id uuid primary key,
+    user_id uuid,
+    folder_id text not null,
+    folder_name text,
+    folder_link text not null,
+    created_at text not null default '',
+    updated_at text not null default ''
+  );`,
+  `create index if not exists drive_connected_folders_user_idx on drive_connected_folders(user_id);`,
 ];
 
 const alterStatements = [
@@ -110,6 +131,19 @@ const alterStatements = [
   `alter table automation_runtime add column if not exists started_at text;`,
   `alter table automation_runtime add column if not exists stopped_at text;`,
   `alter table automation_runtime add column if not exists updated_at text not null default '';`,
+  `alter table drive_oauth_connections add column if not exists user_id uuid;`,
+  `alter table drive_oauth_connections add column if not exists email text;`,
+  `alter table drive_oauth_connections add column if not exists access_token text not null default '';`,
+  `alter table drive_oauth_connections add column if not exists refresh_token text not null default '';`,
+  `alter table drive_oauth_connections add column if not exists token_expiry text;`,
+  `alter table drive_oauth_connections add column if not exists created_at text not null default '';`,
+  `alter table drive_oauth_connections add column if not exists updated_at text not null default '';`,
+  `alter table drive_connected_folders add column if not exists user_id uuid;`,
+  `alter table drive_connected_folders add column if not exists folder_id text not null default '';`,
+  `alter table drive_connected_folders add column if not exists folder_name text;`,
+  `alter table drive_connected_folders add column if not exists folder_link text not null default '';`,
+  `alter table drive_connected_folders add column if not exists created_at text not null default '';`,
+  `alter table drive_connected_folders add column if not exists updated_at text not null default '';`,
 ];
 
 export async function ensureSchema(app: App) {

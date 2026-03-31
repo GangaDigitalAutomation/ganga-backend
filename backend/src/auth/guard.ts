@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { App } from "../core/createApp.js";
 import { verifySession } from "./session.js";
 
-const OPEN_PREFIXES = ["/health", "/api/auth", "/api/events"];
+const OPEN_PREFIXES = ["/health", "/api/auth", "/api/events", "/api/drive/auth/callback"];
 
 export function registerAuthGuard(app: App) {
   app.fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
@@ -26,4 +26,3 @@ export function registerAuthGuard(app: App) {
     }
   });
 }
-

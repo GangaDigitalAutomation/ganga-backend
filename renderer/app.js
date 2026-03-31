@@ -7,8 +7,13 @@ const state = {
     automationRunning: false,
     uploadInProgress: false,
   },
+  driveAuth: {
+    connected: false,
+    email: '',
+  },
   driveFolders: [],
   driveFolderData: {},
+  driveFolderOptions: [],
   tagChips: [],
   autoScheduleEnabled: false,
   selectedSlotKey: '',
@@ -39,6 +44,9 @@ navLinks.forEach((link) => {
       section.classList.toggle('active', section.id === `page-${page}`);
     });
     if (page === 'library') {
+      refreshDriveAuthStatus();
+      refreshDriveFolderOptions();
+      loadConnectedDriveFolders();
       fetchDriveVideos();
       startDriveAutoRefresh();
     }
@@ -1411,9 +1419,18 @@ async function fetchDriveVideos(options = {}) {
     .map((item) => item.trim())
     .filter(Boolean);
   const persistedLinks = Array.isArray(state.data?.settings?.driveFolderLinks) ? state.data.settings.driveFolderLinks : [];
-  const links = Array.from(new Set([...(state.driveFolders || []), ...persistedLinks, ...inputLinks]))
+  let links = Array.from(new Set([...(state.driveFolders || []), ...persistedLinks, ...inputLinks]))
     .filter((link) => extractDriveFolderId(link));
-  if (!links.length) return;
+
+  if (!links.length) {
+    await loadConnectedDriveFolders();
+    links = Array.from(new Set([...(state.driveFolders || [])]))
+      .filter((link) => extractDriveFolderId(link));
+  }
+  if (!links.length) {
+    if (!silent) setDriveFolderImportResult('Connect a Google Drive folder first.', true);
+    return;
+  }
 
   state.driveFolders = links;
   await window.api.updateSettings({ driveFolderLinks: links });
@@ -1490,6 +1507,8 @@ async function loadState() {
   if (!Array.isArray(state.tagChips) || state.tagChips.length === 0) {
     state.tagChips = parseTagsFromString(state.data?.settings?.globalTags || '');
   }
+  await refreshDriveAuthStatus();
+  await loadConnectedDriveFolders();
   renderVideos();
   renderChannels();
   captureUploadedEvents(state.data);
@@ -1599,21 +1618,67 @@ function setDriveFolderImportResult(message, isError = false) {
 }
 
 document.getElementById('import-drive-folder')?.addEventListener('click', async () => {
-  const driveApiKey = document.getElementById('drive-api-key-input')?.value?.trim() || '';
-  if (driveApiKey) {
-    try {
-      await window.api.updateSettings({ driveApiKey });
-      document.getElementById('drive-api-key-input').value = '';
-    } catch (error) {
-      setDriveFolderImportResult(error.message || 'Failed to save Drive API key', true);
-      return;
+  const select = document.getElementById('drive-folder-select');
+  const folderId = String(select?.value || '').trim();
+  const folder = (state.driveFolderOptions || []).find((item) => String(item?.id || '') === folderId);
+  if (!folder) {
+    setDriveFolderImportResult('Select a Google Drive folder first.', true);
+    return;
+  }
+  setDriveFolderImportResult('');
+  try {
+    await window.api.connectDriveFolder({
+      folderId: folder.id,
+      folderName: folder.name,
+      folderLink: folder.link,
+    });
+    const linkInput = document.getElementById('drive-folder-link-input');
+    if (linkInput) linkInput.value = folder.link || '';
+    state.driveFolders = folder.link ? [folder.link] : [];
+    await window.api.updateSettings({ driveFolderLinks: state.driveFolders });
+    const selectedLabel = document.getElementById('drive-folder-selected');
+    if (selectedLabel) {
+      selectedLabel.textContent = `Selected folder: ${folder.name || folder.link || 'Drive Folder'}`;
     }
+  } catch (error) {
+    setDriveFolderImportResult(error.message || 'Failed to connect Drive folder', true);
+    return;
   }
   await fetchDriveVideos();
 });
 
 document.getElementById('refresh-drive-folder')?.addEventListener('click', async () => {
+  await refreshDriveFolderOptions();
   await fetchDriveVideos();
+});
+
+document.getElementById('drive-auth-connect')?.addEventListener('click', async () => {
+  setDriveFolderImportResult('');
+  try {
+    const response = await window.api.startDriveAuth();
+    const authUrl = response?.auth_url;
+    if (!authUrl) {
+      throw new Error('Drive auth URL missing.');
+    }
+    const popup = window.open(authUrl, 'driveAuth', 'width=520,height=680');
+    if (!popup) {
+      setDriveFolderImportResult('Popup blocked. Please allow popups and try again.', true);
+    }
+  } catch (error) {
+    setDriveFolderImportResult(error.message || 'Drive sign-in failed', true);
+  }
+});
+
+document.getElementById('drive-auth-check')?.addEventListener('click', async () => {
+  await refreshDriveAuthStatus();
+  await refreshDriveFolderOptions();
+});
+
+window.addEventListener('message', async (event) => {
+  if (event?.data?.type === 'drive-auth-success') {
+    await refreshDriveAuthStatus();
+    await refreshDriveFolderOptions();
+  }
 });
 
 document.getElementById('tags-entry-input')?.addEventListener('keydown', (event) => {
@@ -2089,6 +2154,91 @@ function setupOAuthDropZone() {
       setChannelFormMessage(oauthJsonValidationError);
     }
   });
+}
+
+function updateDriveAuthUI() {
+  const statusEl = document.getElementById('drive-auth-status');
+  const connectBtn = document.getElementById('drive-auth-connect');
+  if (statusEl) {
+    if (state.driveAuth?.connected) {
+      const email = state.driveAuth.email ? ` (${state.driveAuth.email})` : '';
+      statusEl.textContent = `Google Drive connected${email}`;
+    } else {
+      statusEl.textContent = 'Google Drive not connected.';
+    }
+  }
+  if (connectBtn) {
+    connectBtn.textContent = state.driveAuth?.connected ? 'Reconnect Google Drive' : 'Connect Google Drive';
+  }
+}
+
+function updateDriveFolderSelect(options) {
+  const select = document.getElementById('drive-folder-select');
+  if (!select) return;
+  select.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = options.length ? 'Select a Google Drive folder' : 'No folders found';
+  select.appendChild(placeholder);
+
+  options.forEach((folder) => {
+    const opt = document.createElement('option');
+    opt.value = folder.id || '';
+    opt.textContent = folder.name || folder.link || 'Drive Folder';
+    select.appendChild(opt);
+  });
+
+  if (state.driveFolders && state.driveFolders.length) {
+    const linked = String(state.driveFolders[0] || '');
+    const match = options.find((folder) => String(folder.link || '') === linked);
+    if (match && match.id) {
+      select.value = match.id;
+    }
+  }
+}
+
+async function refreshDriveAuthStatus() {
+  try {
+    const status = await window.api.getDriveAuthStatus();
+    state.driveAuth = {
+      connected: Boolean(status?.connected),
+      email: String(status?.email || ''),
+    };
+  } catch (error) {
+    state.driveAuth = { connected: false, email: '' };
+    const errorEl = document.getElementById('drive-folder-error');
+    if (errorEl) errorEl.textContent = error.message || 'Drive auth status failed.';
+  }
+  updateDriveAuthUI();
+}
+
+async function refreshDriveFolderOptions() {
+  try {
+    const response = await window.api.listDriveFolders();
+    const folders = Array.isArray(response?.folders) ? response.folders : [];
+    state.driveFolderOptions = folders;
+    updateDriveFolderSelect(folders);
+  } catch (error) {
+    state.driveFolderOptions = [];
+    updateDriveFolderSelect([]);
+    const errorEl = document.getElementById('drive-folder-error');
+    if (errorEl) errorEl.textContent = error.message || 'Failed to load Drive folders.';
+  }
+}
+
+async function loadConnectedDriveFolders() {
+  try {
+    const response = await window.api.getConnectedDriveFolders();
+    const folders = Array.isArray(response?.folders) ? response.folders : [];
+    if (folders.length) {
+      state.driveFolders = folders.map((folder) => folder.link || '').filter(Boolean);
+      const selectedLabel = document.getElementById('drive-folder-selected');
+      if (selectedLabel) {
+        selectedLabel.textContent = `Selected folder: ${folders[0].name || folders[0].link || 'Drive Folder'}`;
+      }
+    }
+  } catch (_) {}
 }
 
 document.getElementById('pick-oauth').addEventListener('click', async () => {
