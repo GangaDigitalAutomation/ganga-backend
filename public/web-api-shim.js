@@ -32,11 +32,15 @@
     const url = new URL(window.location.href);
     const connected = url.searchParams.get("channel_connected");
     if (!connected) return;
+    console.log("[GDA] Channel connected redirect params:", Object.fromEntries(url.searchParams.entries()));
     try {
       const current = await getState();
       emit("onState", current);
     } catch (_) {}
-    ["channel_connected", "channel_id"].forEach((key) => url.searchParams.delete(key));
+    try {
+      localStorage.setItem("gda_channel_connected", "1");
+    } catch (_) {}
+    ["channel_connected", "channel_id", "status"].forEach((key) => url.searchParams.delete(key));
     window.history.replaceState({}, "", `${url.pathname}${url.search}`);
   }
 
@@ -327,6 +331,7 @@
       return { success: true };
     },
     async getChannelToken(id) {
+      console.log("[GDA] Get Token for channel:", id);
       window.location.href = `${BASE_URL}/auth/google?channelId=${encodeURIComponent(id)}`;
       return { success: true };
     },

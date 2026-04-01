@@ -203,8 +203,12 @@ export function registerAuthRoutes(app: App) {
           created_at: new Date().toISOString(),
         });
 
+        app.logger.info({ channelId, youtube_channel_id }, "Channel OAuth stored tokens");
+
         const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL);
-        return reply.redirect(`${frontendUrl}/dashboard?channel_connected=1&channel_id=${encodeURIComponent(channelId)}`);
+        return reply.redirect(
+          `${frontendUrl}/dashboard?channel_connected=1&channel_id=${encodeURIComponent(channelId)}&status=connected`,
+        );
       } catch (error) {
         const errPayload =
           (error as any)?.response?.data ||

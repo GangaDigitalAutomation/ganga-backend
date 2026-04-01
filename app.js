@@ -1546,6 +1546,13 @@ async function loadState() {
   renderProgress();
   await refreshAutomationStatus();
   await refreshAutomationUpgradeStatus();
+
+  try {
+    if (localStorage.getItem('gda_channel_connected') === '1') {
+      localStorage.removeItem('gda_channel_connected');
+      showChannelToast('Channel Connected Successfully', 'success');
+    }
+  } catch (_) {}
 }
 
 window.api.onLog((message) => addLog(message));
