@@ -34,6 +34,10 @@ const state = {
     lastError: '',
     lastAction: null,
     incidentCache: new Map(),
+    resolvedIncidents: [],
+    incidentTab: 'active',
+    autoClearMinutes: 2,
+    pinnedIncidentKeys: new Set(),
   },
 };
 
@@ -2495,7 +2499,10 @@ function renderAiDebug() {
 
     const filter = filterEl ? String(filterEl.value || 'all') : 'all';
     const term = searchEl ? String(searchEl.value || '').trim().toLowerCase() : '';
-    const filtered = recent.filter((log) => {
+    const listSource = state.ai.incidentTab === 'resolved'
+      ? state.ai.resolvedIncidents
+      : recent;
+    const filtered = listSource.filter((log) => {
       const level = String(log.level || '').toLowerCase();
       const message = String(log.message || log.error || "").toLowerCase();
       if (term && !message.includes(term)) return false;
@@ -2505,6 +2512,7 @@ function renderAiDebug() {
       if (filter === 'info') return level === 'info';
       return true;
     });
+
     incidentWrap.innerHTML = filtered.length
       ? filtered.map((log, idx) => {
         const level = String(log.level || '').toLowerCase();
@@ -2512,11 +2520,14 @@ function renderAiDebug() {
         const label = severity.toUpperCase();
         const message = escapeHtml(log.message || log.error || "");
         const timestamp = escapeHtml(String(log.created_at || log.timestamp || ""));
+        const key = String(log.id || log.message || log.error || idx);
+        const pinned = state.ai.pinnedIncidentKeys.has(key);
         return `
           <div class="log-entry log-row">
             <button class="incident-toggle" data-incident-index="${idx}" aria-label="Toggle details"></button>
             <span class="severity-badge ${severity}">${label}</span>
             <span class="incident-message">${message}</span>
+            <button class="incident-pin" data-incident-pin="${key}">${pinned ? 'PINNED' : 'PIN'}</button>
           </div>
           <div class="incident-details hidden" data-incident-details="${idx}">
             <div><strong>Time:</strong> ${timestamp || '--'}</div>
@@ -2531,6 +2542,22 @@ function renderAiDebug() {
         const idx = btn.getAttribute('data-incident-index');
         const detail = incidentWrap.querySelector(`[data-incident-details="${idx}"]`);
         if (detail) detail.classList.toggle('hidden');
+      });
+    });
+
+    incidentWrap.querySelectorAll('[data-incident-pin]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-incident-pin');
+        if (!key) return;
+        if (state.ai.pinnedIncidentKeys.has(key)) {
+          state.ai.pinnedIncidentKeys.delete(key);
+        } else {
+          state.ai.pinnedIncidentKeys.add(key);
+        }
+        try {
+          localStorage.setItem('gda_incident_pins', JSON.stringify(Array.from(state.ai.pinnedIncidentKeys)));
+        } catch (_) {}
+        renderAiDebug();
       });
     });
   }
@@ -2581,6 +2608,25 @@ function addAiMessage(role, text) {
   renderAiChat();
 }
 
+function hydrateIncidentSettings() {
+  try {
+    const pins = JSON.parse(localStorage.getItem('gda_incident_pins') || '[]');
+    state.ai.pinnedIncidentKeys = new Set(pins);
+  } catch (_) {}
+  try {
+    const resolved = JSON.parse(localStorage.getItem('gda_incident_resolved') || '[]');
+    if (Array.isArray(resolved)) state.ai.resolvedIncidents = resolved;
+  } catch (_) {}
+  const autoClear = Number(localStorage.getItem('gda_incident_autoclear') || '');
+  if (Number.isFinite(autoClear) && autoClear > 0) {
+    state.ai.autoClearMinutes = autoClear;
+  }
+  const input = document.getElementById('incident-autoclear');
+  if (input) {
+    input.value = String(state.ai.autoClearMinutes);
+  }
+}
+
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
   const speech = new SpeechSynthesisUtterance(text);
@@ -2627,12 +2673,16 @@ async function refreshAiSystemData() {
       const key = String(log.id || log.message || log.error || Math.random());
       state.ai.incidentCache.set(key, { log, lastSeen: now });
     });
-    const maxAgeMs = 2 * 60 * 1000;
+    const maxAgeMs = state.ai.autoClearMinutes * 60 * 1000;
     state.ai.incidentCache.forEach((value, key) => {
       if (now - value.lastSeen > maxAgeMs) {
+        state.ai.resolvedIncidents.unshift({ ...value.log, resolved_at: new Date().toISOString() });
         state.ai.incidentCache.delete(key);
       }
     });
+    try {
+      localStorage.setItem('gda_incident_resolved', JSON.stringify(state.ai.resolvedIncidents.slice(0, 200)));
+    } catch (_) {}
     const cachedErrors = Array.from(state.ai.incidentCache.values()).map((entry) => entry.log);
     state.ai.systemData = { ...data, errors: cachedErrors };
     renderAiStatus();
@@ -2792,8 +2842,30 @@ document.getElementById('incident-search')?.addEventListener('input', () => {
   renderAiDebug();
 });
 document.getElementById('incident-export')?.addEventListener('click', exportIncidentsCsv);
+document.getElementById('incident-tab-active')?.addEventListener('click', () => {
+  state.ai.incidentTab = 'active';
+  document.getElementById('incident-tab-active')?.classList.add('active');
+  document.getElementById('incident-tab-resolved')?.classList.remove('active');
+  renderAiDebug();
+});
+document.getElementById('incident-tab-resolved')?.addEventListener('click', () => {
+  state.ai.incidentTab = 'resolved';
+  document.getElementById('incident-tab-active')?.classList.remove('active');
+  document.getElementById('incident-tab-resolved')?.classList.add('active');
+  renderAiDebug();
+});
+document.getElementById('incident-autoclear')?.addEventListener('change', (event) => {
+  const value = Number(event.target.value);
+  if (Number.isFinite(value) && value > 0) {
+    state.ai.autoClearMinutes = value;
+    try {
+      localStorage.setItem('gda_incident_autoclear', String(value));
+    } catch (_) {}
+  }
+});
 
 loadState().then(() => {
+  hydrateIncidentSettings();
   if (isLibraryPageActive()) {
     fetchDriveVideos();
   }

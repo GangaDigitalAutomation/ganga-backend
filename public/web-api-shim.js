@@ -1,5 +1,5 @@
-﻿(function () {
-  const BASE_URL = "https://ganga-backend-production.up.railway.app";
+(function () {
+  const BASE_URL = "https://ganga-backend-production.up.railway.app".replace(/\\/+$/, "");
   const SETTINGS_KEY = "gda_web_settings";
   const TOKEN_KEY = "auth_token";
   const STATE_CACHE_KEY = "gda_web_state_cache";
@@ -116,21 +116,28 @@
     return next;
   }
 
+  async function safeFetch(url, options = {}) {
+    try {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+      if (!response.ok) {
+        const msg = data?.error || data?.message || `HTTP ${response.status}`;
+        throw new Error(`API Error: ${msg}`);
+      }
+      return data;
+    } catch (error) {
+      console.error("FETCH FAILED:", error);
+      throw error;
+    }
+  }
+
   async function request(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-
-    const response = await fetch(`${BASE_URL}${path}`, { ...options, headers });
-    const text = await response.text();
-    let data;
-    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-
-    if (!response.ok) {
-      const msg = data?.error || data?.message || `HTTP ${response.status}`;
-      throw new Error(msg);
-    }
-    return data;
+    return safeFetch(`${BASE_URL}${path}`, { ...options, headers });
   }
 
   async function getState() {
@@ -508,3 +515,6 @@
     } catch (_) {}
   }, 10000);
 })();
+
+
+

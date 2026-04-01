@@ -334,6 +334,10 @@
                 <span id="incident-count-warn" class="severity-badge warn">WARN 0</span>
                 <span id="incident-count-info" class="severity-badge info">INFO 0</span>
               </div>
+              <div class="incident-tabs">
+                <button class="secondary active" id="incident-tab-active">Active</button>
+                <button class="secondary" id="incident-tab-resolved">Resolved</button>
+              </div>
               <input id="incident-search" type="text" placeholder="Search incidents..." />
               <select id="incident-filter">
                 <option value="all">All Severities</option>
@@ -341,6 +345,7 @@
                 <option value="warn">Warning</option>
                 <option value="info">Info</option>
               </select>
+              <input id="incident-autoclear" type="number" min="1" max="120" placeholder="Auto-clear (min)" />
               <button class="secondary" id="incident-export">Export CSV</button>
             </div>
             <p id="incident-archive-hint" class="hint" style="margin-bottom: 10px;"></p>
