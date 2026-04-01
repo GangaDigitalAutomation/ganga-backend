@@ -33,6 +33,7 @@ const state = {
     systemData: null,
     lastError: '',
     lastAction: null,
+    incidentCache: new Map(),
   },
 };
 
@@ -2482,9 +2483,14 @@ function renderAiDebug() {
     if (countWarnEl) countWarnEl.textContent = `WARN ${counts.warn}`;
     if (countInfoEl) countInfoEl.textContent = `INFO ${counts.info}`;
     if (archiveHint) {
-      archiveHint.textContent = archived.length
-        ? `Archived ${archived.length} incidents older than ${archiveDays} days.`
-        : '';
+      const clearedCount = incidents.length - recent.length;
+      if (archived.length) {
+        archiveHint.textContent = `Archived ${archived.length} incidents older than ${archiveDays} days.`;
+      } else if (clearedCount > 0) {
+        archiveHint.textContent = `Auto-cleared ${clearedCount} resolved incidents.`;
+      } else {
+        archiveHint.textContent = '';
+      }
     }
 
     const filter = filterEl ? String(filterEl.value || 'all') : 'all';
@@ -2615,6 +2621,20 @@ async function refreshAiSystemData() {
   try {
     const data = await window.api.getSystemData();
     state.ai.systemData = data;
+    const now = Date.now();
+    const errors = Array.isArray(data.errors) ? data.errors : [];
+    errors.forEach((log) => {
+      const key = String(log.id || log.message || log.error || Math.random());
+      state.ai.incidentCache.set(key, { log, lastSeen: now });
+    });
+    const maxAgeMs = 2 * 60 * 1000;
+    state.ai.incidentCache.forEach((value, key) => {
+      if (now - value.lastSeen > maxAgeMs) {
+        state.ai.incidentCache.delete(key);
+      }
+    });
+    const cachedErrors = Array.from(state.ai.incidentCache.values()).map((entry) => entry.log);
+    state.ai.systemData = { ...data, errors: cachedErrors };
     renderAiStatus();
     renderAiDebug();
   } catch (error) {
