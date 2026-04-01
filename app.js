@@ -2447,6 +2447,11 @@ function renderAiDebug() {
   const aiLogWrap = document.getElementById('ai-action-logs');
   const incidentWrap = document.getElementById('ai-incident-logs');
   const filterEl = document.getElementById('incident-filter');
+  const searchEl = document.getElementById('incident-search');
+  const archiveHint = document.getElementById('incident-archive-hint');
+  const countErrorEl = document.getElementById('incident-count-error');
+  const countWarnEl = document.getElementById('incident-count-warn');
+  const countInfoEl = document.getElementById('incident-count-info');
   if (aiLogWrap) {
     const logs = Array.isArray(data.logs) ? data.logs : [];
     const aiLogs = logs.filter((log) => String(log.message || "").includes("[AI_ACTION]")).slice(0, 20);
@@ -2456,9 +2461,38 @@ function renderAiDebug() {
   }
   if (incidentWrap) {
     const incidents = Array.isArray(data.errors) ? data.errors : [];
-    const filter = filterEl ? String(filterEl.value || 'all') : 'all';
-    const filtered = incidents.filter((log) => {
+    const counts = { error: 0, warn: 0, info: 0 };
+    const archiveDays = 7;
+    const now = Date.now();
+    const archived = [];
+    const recent = incidents.filter((log) => {
+      const createdAt = String(log.created_at || log.timestamp || "").trim();
+      const timeMs = createdAt ? new Date(createdAt).getTime() : now;
       const level = String(log.level || '').toLowerCase();
+      const sev = level === 'error' ? 'error' : (level === 'warn' || level === 'warning' ? 'warn' : 'info');
+      counts[sev] += 1;
+      if (Number.isFinite(timeMs) && now - timeMs > archiveDays * 24 * 60 * 60 * 1000) {
+        archived.push(log);
+        return false;
+      }
+      return true;
+    });
+
+    if (countErrorEl) countErrorEl.textContent = `ERROR ${counts.error}`;
+    if (countWarnEl) countWarnEl.textContent = `WARN ${counts.warn}`;
+    if (countInfoEl) countInfoEl.textContent = `INFO ${counts.info}`;
+    if (archiveHint) {
+      archiveHint.textContent = archived.length
+        ? `Archived ${archived.length} incidents older than ${archiveDays} days.`
+        : '';
+    }
+
+    const filter = filterEl ? String(filterEl.value || 'all') : 'all';
+    const term = searchEl ? String(searchEl.value || '').trim().toLowerCase() : '';
+    const filtered = recent.filter((log) => {
+      const level = String(log.level || '').toLowerCase();
+      const message = String(log.message || log.error || "").toLowerCase();
+      if (term && !message.includes(term)) return false;
       if (filter === 'all') return true;
       if (filter === 'warn') return level === 'warn' || level === 'warning';
       if (filter === 'error') return level === 'error';
@@ -2594,6 +2628,10 @@ async function runAiAction(action) {
   if (statusEl) statusEl.textContent = 'Running action...';
   try {
     const res = await window.api.aiAction({ action });
+    if (res?.data?.data?.url) {
+      window.location.href = res.data.data.url;
+      return;
+    }
     addAiMessage('assistant', res?.message || 'Action completed.');
     speak(res?.message || '');
     await refreshAiSystemData();
@@ -2728,6 +2766,9 @@ document.querySelectorAll('[data-ai-action]').forEach((btn) => {
   });
 });
 document.getElementById('incident-filter')?.addEventListener('change', () => {
+  renderAiDebug();
+});
+document.getElementById('incident-search')?.addEventListener('input', () => {
   renderAiDebug();
 });
 document.getElementById('incident-export')?.addEventListener('click', exportIncidentsCsv);

@@ -329,6 +329,12 @@
           <div class="glass-card" style="margin-top: 16px;">
             <h3>System Incident History</h3>
             <div class="incident-controls">
+              <div class="incident-counters">
+                <span id="incident-count-error" class="severity-badge error">ERROR 0</span>
+                <span id="incident-count-warn" class="severity-badge warn">WARN 0</span>
+                <span id="incident-count-info" class="severity-badge info">INFO 0</span>
+              </div>
+              <input id="incident-search" type="text" placeholder="Search incidents..." />
               <select id="incident-filter">
                 <option value="all">All Severities</option>
                 <option value="error">Error</option>
@@ -337,6 +343,7 @@
               </select>
               <button class="secondary" id="incident-export">Export CSV</button>
             </div>
+            <p id="incident-archive-hint" class="hint" style="margin-bottom: 10px;"></p>
             <div id="ai-incident-logs" class="log-list"></div>
           </div>
         </section>
