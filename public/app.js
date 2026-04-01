@@ -2716,7 +2716,8 @@ async function sendAiMessage(explicitText) {
   const input = document.getElementById('ai-input');
   const statusEl = document.getElementById('ai-chat-status');
   if (!input && !explicitText) return;
-  const text = String(explicitText || input.value || '').trim();
+  const isEventObject = explicitText && typeof explicitText === 'object' && 'type' in explicitText;
+  const text = String((isEventObject ? '' : explicitText) || input.value || '').trim();
   if (!text) return;
   if (input) input.value = '';
   if (!explicitText) addAiMessage('user', text);
@@ -2820,7 +2821,7 @@ document.getElementById('connect-channel').addEventListener('click', async () =>
   }
 });
 
-document.getElementById('ai-send')?.addEventListener('click', sendAiMessage);
+document.getElementById('ai-send')?.addEventListener('click', () => sendAiMessage());
 document.getElementById('ai-input')?.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
