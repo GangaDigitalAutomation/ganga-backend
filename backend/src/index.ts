@@ -10,6 +10,8 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDriveRoutes } from "./routes/drive.js";
+import { registerSystemRoutes } from "./routes/system.js";
+import { registerAiRoutes } from "./routes/ai.js";
 import { createCoreApp, type App } from "./core/createApp.js";
 import * as schema from "./db/schema/schema.js";
 import { ensureSchema } from "./db/bootstrap.js";
@@ -56,6 +58,8 @@ registerUploadRoutes(app as unknown as App);
 registerLogsRoutes(app as unknown as App);
 registerAutomationRoutes(app as unknown as App);
 registerAutoPlannerRoutes(app as unknown as App);
+registerSystemRoutes(app as unknown as App);
+registerAiRoutes(app as unknown as App);
 
 await seedData(app);
 

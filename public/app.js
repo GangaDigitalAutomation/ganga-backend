@@ -28,6 +28,12 @@ const state = {
     totalBytes: 0,
     uploadedBytes: 0,
   },
+  ai: {
+    messages: [],
+    systemData: null,
+    lastError: '',
+    lastAction: null,
+  },
 };
 
 let driveAutoRefreshTimer = null;
@@ -51,11 +57,18 @@ navLinks.forEach((link) => {
       fetchDriveVideos();
       startDriveAutoRefresh();
     }
+    if (page === 'ai') {
+      refreshAiSystemData();
+    }
   });
 });
 
 function isLibraryPageActive() {
   return document.getElementById('page-library')?.classList.contains('active');
+}
+
+function isAiPageActive() {
+  return document.getElementById('page-ai')?.classList.contains('active');
 }
 
 function startDriveAutoRefresh() {
@@ -2398,6 +2411,94 @@ async function loadConnectedDriveFolders() {
   } catch (_) {}
 }
 
+function renderAiStatus() {
+  const statusEl = document.getElementById('ai-system-status');
+  const summaryEl = document.getElementById('ai-system-summary');
+  if (!statusEl || !summaryEl) return;
+
+  const data = state.ai.systemData;
+  if (!data) {
+    statusEl.textContent = 'Unavailable';
+    statusEl.classList.remove('status-ok', 'status-warn');
+    summaryEl.textContent = 'System data unavailable.';
+    return;
+  }
+
+  const apiHealth = data.apiHealth || {};
+  const ok = apiHealth.youtube === 'OK' && apiHealth.drive === 'OK';
+  statusEl.textContent = ok ? 'Healthy' : 'Needs Attention';
+  statusEl.classList.toggle('status-ok', ok);
+  statusEl.classList.toggle('status-warn', !ok);
+
+  const channelCount = Array.isArray(data.channels) ? data.channels.length : 0;
+  const videoCount = Array.isArray(data.videos) ? data.videos.length : 0;
+  const errorCount = Array.isArray(data.errors) ? data.errors.length : 0;
+  summaryEl.textContent = `Channels: ${channelCount} · Videos: ${videoCount} · Automation: ${data.automationStatus || 'OFF'} · Errors: ${errorCount}`;
+}
+
+function renderAiDebug() {
+  const systemPre = document.getElementById('ai-system-data');
+  const logsPre = document.getElementById('ai-system-logs');
+  if (!systemPre || !logsPre) return;
+  const data = state.ai.systemData || {};
+  systemPre.textContent = JSON.stringify(data, null, 2);
+  logsPre.textContent = JSON.stringify(data.logs || [], null, 2);
+}
+
+function renderAiChat() {
+  const feed = document.getElementById('ai-chat-feed');
+  if (!feed) return;
+  feed.innerHTML = '';
+  state.ai.messages.forEach((msg) => {
+    const bubble = document.createElement('div');
+    bubble.className = `ai-message ${msg.role}`;
+    bubble.textContent = msg.text;
+    feed.appendChild(bubble);
+  });
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function addAiMessage(role, text) {
+  state.ai.messages.push({ role, text });
+  renderAiChat();
+}
+
+async function refreshAiSystemData() {
+  try {
+    const data = await window.api.getSystemData();
+    state.ai.systemData = data;
+    renderAiStatus();
+    renderAiDebug();
+  } catch (error) {
+    state.ai.lastError = error.message || String(error);
+    renderAiStatus();
+  }
+}
+
+async function sendAiMessage() {
+  const input = document.getElementById('ai-input');
+  const statusEl = document.getElementById('ai-chat-status');
+  if (!input) return;
+  const text = String(input.value || '').trim();
+  if (!text) return;
+  input.value = '';
+  addAiMessage('user', text);
+  if (statusEl) statusEl.textContent = 'Thinking...';
+  try {
+    const systemData = state.ai.systemData || state.data?.systemData || {};
+    const response = await window.api.aiChat({ message: text, systemData });
+    if (response?.action?.message) {
+      addAiMessage('assistant', `${response.reply || ''}\n\nAction: ${response.action.message}`.trim());
+    } else {
+      addAiMessage('assistant', response.reply || 'No response from AI.');
+    }
+  } catch (error) {
+    addAiMessage('assistant', `AI error: ${error.message || error}`);
+  } finally {
+    if (statusEl) statusEl.textContent = '';
+  }
+}
+
 document.getElementById('pick-oauth').addEventListener('click', async () => {
   try {
     const result = await window.api.selectOAuthJson();
@@ -2475,13 +2576,23 @@ document.getElementById('connect-channel').addEventListener('click', async () =>
   }
 });
 
+document.getElementById('ai-send')?.addEventListener('click', sendAiMessage);
+document.getElementById('ai-input')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    sendAiMessage();
+  }
+});
+
 loadState().then(() => {
   if (isLibraryPageActive()) {
     fetchDriveVideos();
   }
   startDriveAutoRefresh();
+  refreshAiSystemData();
 });
 refreshInternet();
 setInterval(refreshInternet, 15000);
 setInterval(refreshAutomationStatus, 20000);
 setInterval(refreshAutomationUpgradeStatus, 20000);
+setInterval(refreshAiSystemData, 5000);

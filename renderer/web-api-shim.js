@@ -172,6 +172,11 @@
       return cache.debug || { channels: [], logs: [], errors: [] };
     });
 
+    const systemDataResp = await request("/api/system/data").catch((error) => {
+      errors.push(`System data sync failed: ${error.message || error}`);
+      return cache.systemData || null;
+    });
+
     const settings = getSettings();
 
     const channels = (channelsResp.channels || []).map((c) => {
@@ -231,9 +236,10 @@
         logs: debugResp.logs || [],
         errors: debugResp.errors || [],
       },
-      systemData: {
+      systemData: systemDataResp || {
         channels: debugResp.channels || [],
         automationStatus: uploadStatus || {},
+        scheduleSlots: automationSettings.settings?.slots || [],
         errors: debugResp.errors || [],
         logs: debugResp.logs || [],
       },
@@ -253,6 +259,7 @@
       content_settings: contentSettings.settings || {},
       automation_settings: automationSettings.settings || {},
       debug: debugResp || {},
+      systemData: systemDataResp || null,
       stats: statePayload.stats,
       channels: statePayload.channels,
       videos: statePayload.videos,
@@ -458,6 +465,16 @@
     },
     async validateOAuthJson(payload) {
       return request("/api/channels/oauth-json/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+    },
+    async getSystemData() {
+      return request("/api/system/data");
+    },
+    async aiChat(payload) {
+      return request("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {}),

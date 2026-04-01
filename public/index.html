@@ -22,6 +22,7 @@
           <button class="nav-link" data-page="library">Video Library</button>
           <button class="nav-link" data-page="channels">Channels</button>
           <button class="nav-link" data-page="scheduling">Automation Panel</button>
+          <button class="nav-link" data-page="ai">AI Analysis</button>
         </nav>
         <div class="sidebar-footer">
           <div class="status-pill hidden" id="internet-status" style="display: none;"></div>
@@ -262,6 +263,47 @@
             <h3>Automation running</h3>
             <p id="automation-running-text" class="label">Checking...</p>
             <p id="automation-pending-text" class="hint" style="margin-top: 10px;">Today Uploaded Videos: 0</p>
+          </div>
+        </section>
+
+        <section class="page" id="page-ai">
+          <div class="page-header">
+            <div>
+              <h2>AI Analysis</h2>
+              <p class="section-count">AI system health + actions</p>
+            </div>
+            <div class="header-actions">
+              <span class="status-pill" id="ai-system-status">Checking...</span>
+            </div>
+          </div>
+
+          <div class="glass-card" style="margin-bottom: 16px;">
+            <h3>System Status</h3>
+            <p class="hint" id="ai-system-summary">Loading system data...</p>
+          </div>
+
+          <div class="glass-card" style="margin-bottom: 16px;">
+            <h3>AI Chat</h3>
+            <div id="ai-chat-feed" class="ai-chat-feed"></div>
+            <div class="ai-input-row">
+              <input id="ai-input" type="text" placeholder="Ask AI to analyze or run action..." />
+              <button class="primary" id="ai-send">Send</button>
+            </div>
+            <p class="hint" id="ai-chat-status"></p>
+          </div>
+
+          <div class="glass-card">
+            <h3>System Debug</h3>
+            <div class="debug-grid" style="margin-top: 12px;">
+              <div>
+                <p class="label">System Data</p>
+                <pre id="ai-system-data" class="debug-pre"></pre>
+              </div>
+              <div>
+                <p class="label">Logs</p>
+                <pre id="ai-system-logs" class="debug-pre"></pre>
+              </div>
+            </div>
           </div>
         </section>
       </main>
