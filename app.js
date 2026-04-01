@@ -2511,6 +2511,21 @@ async function refreshAiSystemData() {
   }
 }
 
+async function runAiAction(action) {
+  const statusEl = document.getElementById('ai-action-status');
+  if (statusEl) statusEl.textContent = 'Running action...';
+  try {
+    const res = await window.api.aiAction({ action });
+    addAiMessage('assistant', res?.message || 'Action completed.');
+    speak(res?.message || '');
+    await refreshAiSystemData();
+  } catch (error) {
+    addAiMessage('assistant', `Action error: ${error.message || error}`);
+  } finally {
+    if (statusEl) statusEl.textContent = '';
+  }
+}
+
 async function sendAiMessage(explicitText) {
   const input = document.getElementById('ai-input');
   const statusEl = document.getElementById('ai-chat-status');
@@ -2523,6 +2538,9 @@ async function sendAiMessage(explicitText) {
   try {
     const systemData = state.ai.systemData || state.data?.systemData || {};
     const response = await window.api.aiChat({ message: text, systemData });
+    if (response?.action?.action) {
+      await refreshAiSystemData();
+    }
     if (response?.action?.message) {
       const msg = `${response.reply || ''}\n\nAction: ${response.action.message}`.trim();
       addAiMessage('assistant', msg);
@@ -2624,6 +2642,13 @@ document.getElementById('ai-input')?.addEventListener('keydown', (event) => {
   }
 });
 document.getElementById('ai-mic')?.addEventListener('click', startVoice);
+document.querySelectorAll('[data-ai-action]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const action = btn.getAttribute('data-ai-action');
+    if (!action) return;
+    await runAiAction(action);
+  });
+});
 
 loadState().then(() => {
   if (isLibraryPageActive()) {

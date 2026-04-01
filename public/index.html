@@ -283,6 +283,19 @@
           </div>
 
           <div class="glass-card" style="margin-bottom: 16px;">
+            <h3>Ganga AI Control Panel</h3>
+            <div class="ai-control-grid">
+              <button class="primary" data-ai-action="start_automation">Start Automation</button>
+              <button class="secondary" data-ai-action="stop_automation">Stop Automation</button>
+              <button class="secondary" data-ai-action="reconnect_youtube">Reconnect YouTube</button>
+              <button class="secondary" data-ai-action="connect_drive">Connect Google Drive</button>
+              <button class="secondary" data-ai-action="fix_schedule">Fix Schedule</button>
+              <button class="secondary" data-ai-action="retry_failed_uploads">Retry Failed Uploads</button>
+            </div>
+            <p class="hint" id="ai-action-status" style="margin-top: 8px;"></p>
+          </div>
+
+          <div class="glass-card" style="margin-bottom: 16px;">
             <h3>Ganga AI Chat</h3>
             <div id="chat" class="ai-chat-feed"></div>
             <div class="ai-input-row">

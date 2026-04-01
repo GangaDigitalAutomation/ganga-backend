@@ -480,6 +480,13 @@
         body: JSON.stringify(payload || {}),
       });
     },
+    async aiAction(payload) {
+      return request("/api/ai/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+      });
+    },
 
     onLog(cb) { callbacks.onLog.push(cb); },
     onProgress(cb) { callbacks.onProgress.push(cb); },

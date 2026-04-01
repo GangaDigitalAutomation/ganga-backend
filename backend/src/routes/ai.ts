@@ -120,4 +120,34 @@ ${JSON.stringify(actionResult, null, 2)}`;
       return { reply: aiText, action: actionResult, suggestions };
     },
   );
+
+  app.fastify.post(
+    "/api/ai/action",
+    async (
+      request: FastifyRequest<{ Body: { action?: string; channelId?: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const action = String(request.body?.action || "").trim();
+      const channelId = String(request.body?.channelId || "").trim();
+      if (!action) return reply.status(400).send({ error: "action is required" });
+
+      let result = { action, success: false, message: "Unknown action." } as any;
+      try {
+        if (action === "start_automation") result = await startAutomation(app);
+        if (action === "stop_automation") result = await stopAutomation(app);
+        if (action === "reconnect_youtube") result = await reconnectYouTube(app, channelId || undefined);
+        if (action === "connect_drive") result = await connectGoogleDrive();
+        if (action === "fix_schedule") result = await fixSchedule(app);
+        if (action === "retry_failed_uploads") result = await retryFailedUploads(app);
+      } catch (error) {
+        result = {
+          action,
+          success: false,
+          message: error instanceof Error ? error.message : "Action failed",
+        };
+      }
+
+      return { success: Boolean(result?.success), message: result?.message || "Action executed", data: result };
+    },
+  );
 }
