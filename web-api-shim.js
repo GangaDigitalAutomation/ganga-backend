@@ -3,9 +3,16 @@
   let BASE_URL = DEFAULT_BASE_URL;
   try {
     const override = localStorage.getItem("gda_api_base");
-    if (override) BASE_URL = override;
+    if (override && typeof override === "string") {
+      try {
+        // Validate URL format to avoid broken overrides
+        new URL(override);
+        BASE_URL = override;
+      } catch (_) {}
+    }
   } catch (_) {}
   BASE_URL = BASE_URL.replace(/\/+$/, "");
+  const OVERRIDE_BASE_URL = BASE_URL;
   const SETTINGS_KEY = "gda_web_settings";
   const TOKEN_KEY = "auth_token";
   const STATE_CACHE_KEY = "gda_web_state_cache";
@@ -143,7 +150,19 @@
     const headers = { ...(options.headers || {}) };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    return safeFetch(`${BASE_URL}${path}`, { ...options, headers });
+    try {
+      return await safeFetch(`${BASE_URL}${path}`, { ...options, headers });
+    } catch (error) {
+      if (OVERRIDE_BASE_URL !== DEFAULT_BASE_URL) {
+        BASE_URL = DEFAULT_BASE_URL;
+        try {
+          return await safeFetch(`${BASE_URL}${path}`, { ...options, headers });
+        } catch (_) {
+          // fall through to original error
+        }
+      }
+      throw error;
+    }
   }
 
   async function getState() {

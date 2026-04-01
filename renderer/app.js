@@ -2259,17 +2259,22 @@ function applyOAuthJsonToForm(parsedPayload, fileName = '') {
 
 async function validateOAuthJsonWithBackend(parsedPayload) {
   if (typeof window.api?.validateOAuthJson !== 'function') return parsedPayload;
-  const response = await window.api.validateOAuthJson({
-    oauth_json_text: JSON.stringify(parsedPayload.parsed),
-  });
-  if (!response?.valid) {
-    throw new Error(response?.error || 'OAuth JSON validation failed.');
+  try {
+    const response = await window.api.validateOAuthJson({
+      oauth_json_text: JSON.stringify(parsedPayload.parsed),
+    });
+    if (!response?.valid) {
+      throw new Error(response?.error || 'OAuth JSON validation failed.');
+    }
+    return {
+      ...parsedPayload,
+      clientId: response.client_id || parsedPayload.clientId,
+      clientSecret: response.client_secret || parsedPayload.clientSecret,
+    };
+  } catch (error) {
+    console.warn('OAuth JSON backend validation skipped:', error);
+    return parsedPayload;
   }
-  return {
-    ...parsedPayload,
-    clientId: response.client_id || parsedPayload.clientId,
-    clientSecret: response.client_secret || parsedPayload.clientSecret,
-  };
 }
 
 async function importOAuthJsonFile(file) {
