@@ -1,5 +1,5 @@
 (function () {
-  const BASE_URL = "https://ganga-backend-production.up.railway.app".replace(/\\/+$/, "");
+  const BASE_URL = "https://ganga-backend-production.up.railway.app".replace(/\/+$/, "");
   const SETTINGS_KEY = "gda_web_settings";
   const TOKEN_KEY = "auth_token";
   const STATE_CACHE_KEY = "gda_web_state_cache";
@@ -190,15 +190,15 @@
       const channelId = c.channelId || c.id;
       return {
         id: channelId,
-      channel_name: c.channelName || c.name,
-      channel_url: c.youtubeChannelUrl || c.youtube_channel_url || "",
-      youtube_url: c.youtubeChannelUrl || c.youtube_channel_url || "",
-      is_selected: settings.selectedChannels?.[channelId] !== false,
-      token_status: c.status === "connected" ? "connected" : "disconnected",
-      status: c.status,
-      last_sync_time: c.lastSyncTime || null,
-      token_expiry: c.tokenExpiry || null,
-      reconnect_required: Boolean(c.reconnectRequired),
+        channel_name: c.channelName || c.name,
+        channel_url: c.youtubeChannelUrl || c.youtube_channel_url || "",
+        youtube_url: c.youtubeChannelUrl || c.youtube_channel_url || "",
+        is_selected: settings.selectedChannels?.[channelId] !== false,
+        token_status: c.status === "connected" ? "connected" : "disconnected",
+        status: c.status,
+        last_sync_time: c.lastSyncTime || null,
+        token_expiry: c.tokenExpiry || null,
+        reconnect_required: Boolean(c.reconnectRequired),
       };
     });
 
@@ -243,7 +243,7 @@
         logs: debugResp.logs || [],
         errors: debugResp.errors || [],
       },
-      systemData: systemDataResp || {
+      systemData: {
         channels: debugResp.channels || [],
         automationStatus: uploadStatus || {},
         scheduleSlots: automationSettings.settings?.slots || [],
@@ -266,11 +266,11 @@
       content_settings: contentSettings.settings || {},
       automation_settings: automationSettings.settings || {},
       debug: debugResp || {},
-      systemData: systemDataResp || null,
       stats: statePayload.stats,
       channels: statePayload.channels,
       videos: statePayload.videos,
       schedules: statePayload.schedules,
+      systemData: systemDataResp || null,
     });
 
     if (errors.length) {
@@ -515,6 +515,3 @@
     } catch (_) {}
   }, 10000);
 })();
-
-
-
