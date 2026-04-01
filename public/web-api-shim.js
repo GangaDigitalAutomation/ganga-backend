@@ -5,7 +5,7 @@
     const override = localStorage.getItem("gda_api_base");
     if (override) BASE_URL = override;
   } catch (_) {}
-  BASE_URL = BASE_URL.replace(/\\/+$/, "");
+  BASE_URL = BASE_URL.replace(/\/+$/, "");
   const SETTINGS_KEY = "gda_web_settings";
   const TOKEN_KEY = "auth_token";
   const STATE_CACHE_KEY = "gda_web_state_cache";
