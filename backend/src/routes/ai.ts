@@ -109,7 +109,15 @@ ActionResult:
 ${JSON.stringify(actionResult, null, 2)}`;
 
       const aiText = await callGemini(apiKey, prompt);
-      return { reply: aiText, action: actionResult };
+
+      const suggestions: string[] = [];
+      const apiHealth = systemData?.apiHealth || {};
+      if (apiHealth.youtube === "FAIL") suggestions.push("Reconnect YouTube");
+      if (apiHealth.drive === "FAIL") suggestions.push("Connect Drive");
+      if (Array.isArray(systemData?.errors) && systemData.errors.length) suggestions.push("Fix Schedule");
+      if (!suggestions.length) suggestions.push("Start Automation");
+
+      return { reply: aiText, action: actionResult, suggestions };
     },
   );
 }

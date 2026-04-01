@@ -1526,33 +1526,45 @@ input[type="time"]::-webkit-clear-button {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 320px;
+  max-height: 360px;
   overflow-y: auto;
-  padding: 8px 2px;
+  padding: 6px;
 }
 
-.ai-message {
+.msg {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--glass-border);
-  background: #101010;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
+  max-width: 60%;
 }
 
-.ai-message.user {
-  border-color: rgba(34, 197, 94, 0.35);
+.msg.user {
+  background: #22c55e;
+  color: #0d0d0d;
+  margin-left: auto;
+  border-color: rgba(34, 197, 94, 0.45);
 }
 
-.ai-message.assistant {
-  border-color: rgba(255, 255, 255, 0.1);
+.msg.ai {
+  background: #1a1a1a;
+  color: #e5e7eb;
+  margin-right: auto;
 }
 
 .ai-input-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 10px;
   margin-top: 12px;
+}
+
+.ai-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 #auto-schedule-btn.active {

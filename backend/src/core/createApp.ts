@@ -31,7 +31,11 @@ export async function createCoreApp(): Promise<App> {
           : undefined,
     },
   });
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
   await app.register(rateLimit, {
     max: 240,
     timeWindow: "1 minute",
@@ -50,6 +54,11 @@ export async function createCoreApp(): Promise<App> {
     db = drizzlePgLite(sqlite, { schema });
     app.log.info({ pglitePath: env.pglitePath }, "Database mode: pglite fallback");
   }
+
+  app.setErrorHandler((error, _request, reply) => {
+    app.log.error({ err: error }, "Unhandled API error");
+    reply.status(500).send({ error: "Internal server error" });
+  });
 
   return {
     fastify: app,

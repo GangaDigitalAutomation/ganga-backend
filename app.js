@@ -2446,12 +2446,12 @@ function renderAiDebug() {
 }
 
 function renderAiChat() {
-  const feed = document.getElementById('ai-chat-feed');
+  const feed = document.getElementById('chat');
   if (!feed) return;
   feed.innerHTML = '';
   state.ai.messages.forEach((msg) => {
     const bubble = document.createElement('div');
-    bubble.className = `ai-message ${msg.role}`;
+    bubble.className = msg.role === 'user' ? 'msg user' : 'msg ai';
     bubble.textContent = msg.text;
     feed.appendChild(bubble);
   });
@@ -2461,6 +2461,42 @@ function renderAiChat() {
 function addAiMessage(role, text) {
   state.ai.messages.push({ role, text });
   renderAiChat();
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  const speech = new SpeechSynthesisUtterance(text);
+  speech.lang = 'en-IN';
+  window.speechSynthesis.speak(speech);
+}
+
+function startVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    addAiMessage('assistant', 'Voice not supported in this browser.');
+    return;
+  }
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-IN';
+  recognition.start();
+  recognition.onresult = async (event) => {
+    const text = event.results[0][0].transcript;
+    addAiMessage('user', text);
+    await sendAiMessage(text);
+  };
+}
+
+function renderAiSuggestions(suggestions = []) {
+  const wrap = document.getElementById('ai-suggestions');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  suggestions.forEach((suggestion) => {
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = suggestion;
+    btn.addEventListener('click', () => sendAiMessage(suggestion));
+    wrap.appendChild(btn);
+  });
 }
 
 async function refreshAiSystemData() {
@@ -2475,23 +2511,27 @@ async function refreshAiSystemData() {
   }
 }
 
-async function sendAiMessage() {
+async function sendAiMessage(explicitText) {
   const input = document.getElementById('ai-input');
   const statusEl = document.getElementById('ai-chat-status');
-  if (!input) return;
-  const text = String(input.value || '').trim();
+  if (!input && !explicitText) return;
+  const text = String(explicitText || input.value || '').trim();
   if (!text) return;
-  input.value = '';
-  addAiMessage('user', text);
+  if (input) input.value = '';
+  if (!explicitText) addAiMessage('user', text);
   if (statusEl) statusEl.textContent = 'Thinking...';
   try {
     const systemData = state.ai.systemData || state.data?.systemData || {};
     const response = await window.api.aiChat({ message: text, systemData });
     if (response?.action?.message) {
-      addAiMessage('assistant', `${response.reply || ''}\n\nAction: ${response.action.message}`.trim());
+      const msg = `${response.reply || ''}\n\nAction: ${response.action.message}`.trim();
+      addAiMessage('assistant', msg);
+      speak(response.reply || '');
     } else {
       addAiMessage('assistant', response.reply || 'No response from AI.');
+      speak(response.reply || '');
     }
+    renderAiSuggestions(response?.suggestions || []);
   } catch (error) {
     addAiMessage('assistant', `AI error: ${error.message || error}`);
   } finally {
@@ -2583,6 +2623,7 @@ document.getElementById('ai-input')?.addEventListener('keydown', (event) => {
     sendAiMessage();
   }
 });
+document.getElementById('ai-mic')?.addEventListener('click', startVoice);
 
 loadState().then(() => {
   if (isLibraryPageActive()) {
@@ -2596,3 +2637,10 @@ setInterval(refreshInternet, 15000);
 setInterval(refreshAutomationStatus, 20000);
 setInterval(refreshAutomationUpgradeStatus, 20000);
 setInterval(refreshAiSystemData, 5000);
+setInterval(async () => {
+  if (!isAiPageActive()) return;
+  if (!state.ai.systemData) return;
+  if (Array.isArray(state.ai.systemData.errors) && state.ai.systemData.errors.length > 0) {
+    await sendAiMessage("fix all issues automatically");
+  }
+}, 15000);
