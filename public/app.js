@@ -2446,6 +2446,7 @@ function renderAiDebug() {
 
   const aiLogWrap = document.getElementById('ai-action-logs');
   const incidentWrap = document.getElementById('ai-incident-logs');
+  const filterEl = document.getElementById('incident-filter');
   if (aiLogWrap) {
     const logs = Array.isArray(data.logs) ? data.logs : [];
     const aiLogs = logs.filter((log) => String(log.message || "").includes("[AI_ACTION]")).slice(0, 20);
@@ -2455,20 +2456,71 @@ function renderAiDebug() {
   }
   if (incidentWrap) {
     const incidents = Array.isArray(data.errors) ? data.errors : [];
-    incidentWrap.innerHTML = incidents.length
-      ? incidents.map((log) => {
+    const filter = filterEl ? String(filterEl.value || 'all') : 'all';
+    const filtered = incidents.filter((log) => {
+      const level = String(log.level || '').toLowerCase();
+      if (filter === 'all') return true;
+      if (filter === 'warn') return level === 'warn' || level === 'warning';
+      if (filter === 'error') return level === 'error';
+      if (filter === 'info') return level === 'info';
+      return true;
+    });
+    incidentWrap.innerHTML = filtered.length
+      ? filtered.map((log, idx) => {
         const level = String(log.level || '').toLowerCase();
         const severity = level === 'error' ? 'error' : (level === 'warn' ? 'warn' : 'info');
         const label = severity.toUpperCase();
+        const message = escapeHtml(log.message || log.error || "");
+        const timestamp = escapeHtml(String(log.created_at || log.timestamp || ""));
         return `
           <div class="log-entry log-row">
+            <button class="incident-toggle" data-incident-index="${idx}" aria-label="Toggle details"></button>
             <span class="severity-badge ${severity}">${label}</span>
-            <span>${escapeHtml(log.message || log.error || "")}</span>
+            <span class="incident-message">${message}</span>
+          </div>
+          <div class="incident-details hidden" data-incident-details="${idx}">
+            <div><strong>Time:</strong> ${timestamp || '--'}</div>
+            <div><strong>Raw:</strong> ${escapeHtml(JSON.stringify(log))}</div>
           </div>
         `;
       }).join('')
       : '<p class="hint">No incidents detected.</p>';
+
+    incidentWrap.querySelectorAll('.incident-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = btn.getAttribute('data-incident-index');
+        const detail = incidentWrap.querySelector(`[data-incident-details="${idx}"]`);
+        if (detail) detail.classList.toggle('hidden');
+      });
+    });
   }
+}
+
+function exportIncidentsCsv() {
+  const data = state.ai.systemData || {};
+  const incidents = Array.isArray(data.errors) ? data.errors : [];
+  if (!incidents.length) {
+    addAiMessage('assistant', 'No incidents to export.');
+    return;
+  }
+  const rows = [
+    ['level', 'message', 'created_at'],
+    ...incidents.map((log) => [
+      String(log.level || ''),
+      String(log.message || log.error || ''),
+      String(log.created_at || log.timestamp || ''),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ganga-ai-incidents-${Date.now()}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function renderAiChat() {
@@ -2675,6 +2727,10 @@ document.querySelectorAll('[data-ai-action]').forEach((btn) => {
     await runAiAction(action);
   });
 });
+document.getElementById('incident-filter')?.addEventListener('change', () => {
+  renderAiDebug();
+});
+document.getElementById('incident-export')?.addEventListener('click', exportIncidentsCsv);
 
 loadState().then(() => {
   if (isLibraryPageActive()) {

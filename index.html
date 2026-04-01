@@ -328,6 +328,15 @@
 
           <div class="glass-card" style="margin-top: 16px;">
             <h3>System Incident History</h3>
+            <div class="incident-controls">
+              <select id="incident-filter">
+                <option value="all">All Severities</option>
+                <option value="error">Error</option>
+                <option value="warn">Warning</option>
+                <option value="info">Info</option>
+              </select>
+              <button class="secondary" id="incident-export">Export CSV</button>
+            </div>
             <div id="ai-incident-logs" class="log-list"></div>
           </div>
         </section>
