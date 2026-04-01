@@ -2456,7 +2456,17 @@ function renderAiDebug() {
   if (incidentWrap) {
     const incidents = Array.isArray(data.errors) ? data.errors : [];
     incidentWrap.innerHTML = incidents.length
-      ? incidents.map((log) => `<div class="log-entry">${escapeHtml(log.message || log.error || "")}</div>`).join('')
+      ? incidents.map((log) => {
+        const level = String(log.level || '').toLowerCase();
+        const severity = level === 'error' ? 'error' : (level === 'warn' ? 'warn' : 'info');
+        const label = severity.toUpperCase();
+        return `
+          <div class="log-entry log-row">
+            <span class="severity-badge ${severity}">${label}</span>
+            <span>${escapeHtml(log.message || log.error || "")}</span>
+          </div>
+        `;
+      }).join('')
       : '<p class="hint">No incidents detected.</p>';
   }
 }
