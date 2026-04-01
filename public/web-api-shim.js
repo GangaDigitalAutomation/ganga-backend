@@ -1,5 +1,11 @@
 (function () {
-  const BASE_URL = "https://ganga-backend-production.up.railway.app".replace(/\/+$/, "");
+  const DEFAULT_BASE_URL = "https://ganga-backend-production.up.railway.app";
+  let BASE_URL = DEFAULT_BASE_URL;
+  try {
+    const override = localStorage.getItem("gda_api_base");
+    if (override) BASE_URL = override;
+  } catch (_) {}
+  BASE_URL = BASE_URL.replace(/\\/+$/, "");
   const SETTINGS_KEY = "gda_web_settings";
   const TOKEN_KEY = "auth_token";
   const STATE_CACHE_KEY = "gda_web_state_cache";
@@ -515,3 +521,5 @@
     } catch (_) {}
   }, 10000);
 })();
+
+
