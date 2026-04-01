@@ -68,7 +68,7 @@ export function getEnv(): EnvValue {
 
   cachedEnv = {
     nodeEnv: process.env.NODE_ENV || "development",
-    host: process.env.HOST || "127.0.0.1",
+    host: process.env.HOST || (process.env.PORT ? "0.0.0.0" : "127.0.0.1"),
     port: parseNumber(process.env.PORT, 8080),
     logLevel: process.env.LOG_LEVEL || "info",
     databaseUrl: process.env.DATABASE_URL || undefined,

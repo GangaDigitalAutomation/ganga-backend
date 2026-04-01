@@ -4,6 +4,10 @@ import { getQueueMode } from "../queue/uploadQueue.js";
 import { isAutomationRunning } from "../services/automationRuntime.js";
 
 export function registerHealthRoutes(app: App) {
+  app.fastify.get("/", async () => {
+    return { status: "ok", message: "Server is live" };
+  });
+
   app.fastify.get("/health", async () => {
     return { status: "ok", service: "api", timestamp: new Date().toISOString() };
   });

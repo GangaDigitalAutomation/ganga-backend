@@ -32,6 +32,7 @@ export function registerSystemRoutes(app: App) {
     };
 
     return {
+      status: "ok",
       channels,
       videos,
       automationStatus: runtime.is_running ? "ON" : "OFF",

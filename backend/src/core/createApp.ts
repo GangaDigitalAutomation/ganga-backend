@@ -68,6 +68,7 @@ export async function createCoreApp(): Promise<App> {
     run: async () => {
       await app.listen({ host: env.host, port: env.port });
       app.log.info({ host: env.host, port: env.port }, "API listening");
+      console.log("Server started on port:", env.port);
     },
   };
 }
