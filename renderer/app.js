@@ -2443,6 +2443,22 @@ function renderAiDebug() {
   const data = state.ai.systemData || {};
   systemPre.textContent = JSON.stringify(data, null, 2);
   logsPre.textContent = JSON.stringify(data.logs || [], null, 2);
+
+  const aiLogWrap = document.getElementById('ai-action-logs');
+  const incidentWrap = document.getElementById('ai-incident-logs');
+  if (aiLogWrap) {
+    const logs = Array.isArray(data.logs) ? data.logs : [];
+    const aiLogs = logs.filter((log) => String(log.message || "").includes("[AI_ACTION]")).slice(0, 20);
+    aiLogWrap.innerHTML = aiLogs.length
+      ? aiLogs.map((log) => `<div class="log-entry">${escapeHtml(log.message || "")}</div>`).join('')
+      : '<p class="hint">No AI actions yet.</p>';
+  }
+  if (incidentWrap) {
+    const incidents = Array.isArray(data.errors) ? data.errors : [];
+    incidentWrap.innerHTML = incidents.length
+      ? incidents.map((log) => `<div class="log-entry">${escapeHtml(log.message || log.error || "")}</div>`).join('')
+      : '<p class="hint">No incidents detected.</p>';
+  }
 }
 
 function renderAiChat() {

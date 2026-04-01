@@ -1573,6 +1573,12 @@ input[type="time"]::-webkit-clear-button {
   gap: 10px;
 }
 
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 #auto-schedule-btn.active {
   box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.55), 0 10px 25px rgba(34, 197, 94, 0.2);
 }

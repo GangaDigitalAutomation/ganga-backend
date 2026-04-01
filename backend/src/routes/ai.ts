@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import * as schema from "../db/schema/schema.js";
 import type { App } from "../index.js";
 import {
   connectGoogleDrive,
@@ -64,6 +65,16 @@ async function callGemini(apiKey: string, prompt: string) {
   return text || "No response from Gemini.";
 }
 
+async function logAiEvent(app: App, level: string, message: string) {
+  try {
+    await app.db.insert(schema.upload_logs).values({
+      level,
+      message,
+      created_at: new Date().toISOString(),
+    });
+  } catch (_) {}
+}
+
 export function registerAiRoutes(app: App) {
   app.fastify.post(
     "/api/ai/chat",
@@ -84,12 +95,16 @@ export function registerAiRoutes(app: App) {
         if (intent === "connectGoogleDrive") actionResult = await connectGoogleDrive();
         if (intent === "fixSchedule") actionResult = await fixSchedule(app);
         if (intent === "retryFailedUploads") actionResult = await retryFailedUploads(app);
+        if (actionResult?.message) {
+          await logAiEvent(app, "info", `[AI_ACTION] ${actionResult.message}`);
+        }
       } catch (error) {
         actionResult = {
           action: intent,
           success: false,
           message: error instanceof Error ? error.message : "Action failed",
         };
+        await logAiEvent(app, "error", `[AI_ACTION] ${actionResult.message}`);
       }
 
       const apiKey = String(process.env.GEMINI_API_KEY || "").trim();
@@ -117,6 +132,7 @@ ${JSON.stringify(actionResult, null, 2)}`;
       if (Array.isArray(systemData?.errors) && systemData.errors.length) suggestions.push("Fix Schedule");
       if (!suggestions.length) suggestions.push("Start Automation");
 
+      await logAiEvent(app, "info", `[AI_CHAT] ${message}`);
       return { reply: aiText, action: actionResult, suggestions };
     },
   );
@@ -139,12 +155,14 @@ ${JSON.stringify(actionResult, null, 2)}`;
         if (action === "connect_drive") result = await connectGoogleDrive();
         if (action === "fix_schedule") result = await fixSchedule(app);
         if (action === "retry_failed_uploads") result = await retryFailedUploads(app);
+        await logAiEvent(app, "info", `[AI_ACTION] ${result?.message || action}`);
       } catch (error) {
         result = {
           action,
           success: false,
           message: error instanceof Error ? error.message : "Action failed",
         };
+        await logAiEvent(app, "error", `[AI_ACTION] ${result.message}`);
       }
 
       return { success: Boolean(result?.success), message: result?.message || "Action executed", data: result };
