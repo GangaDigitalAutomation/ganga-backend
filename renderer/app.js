@@ -68,6 +68,13 @@ navLinks.forEach((link) => {
   });
 });
 
+window.addEventListener('error', (event) => {
+  const message = event?.error?.message || event?.message || 'Unknown error';
+  try {
+    addLog(`UI error: ${message}`);
+  } catch (_) {}
+});
+
 function isLibraryPageActive() {
   return document.getElementById('page-library')?.classList.contains('active');
 }
@@ -2744,7 +2751,7 @@ async function sendAiMessage(explicitText) {
   }
 }
 
-document.getElementById('pick-oauth').addEventListener('click', async () => {
+document.getElementById('pick-oauth')?.addEventListener('click', async () => {
   try {
     const result = await window.api.selectOAuthJson();
     if (result && typeof result === 'object' && result.oauthJsonText) {
@@ -2770,7 +2777,7 @@ document.getElementById('pick-oauth').addEventListener('click', async () => {
 
 setupOAuthDropZone();
 
-document.getElementById('connect-channel').addEventListener('click', async () => {
+document.getElementById('connect-channel')?.addEventListener('click', async () => {
   if (channelConnectInProgress) return;
 
   if (oauthJsonValidationError) {
