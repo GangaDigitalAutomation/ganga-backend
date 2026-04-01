@@ -1343,18 +1343,18 @@ document.getElementById('auto-schedule-btn')?.addEventListener('click', () => {
     return;
   }
 
-  const baseTitlePool = Array.isArray(state.data?.settings?.titlePool)
-    ? [...state.data.settings.titlePool]
-    : String(state.data?.settings?.titlePool || '').split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
-  if (!baseTitlePool.length) {
-    addLog('Auto Schedule blocked: add titles in Content Settings first.');
-    return;
-  }
-
   const unassigned = getDriveVideoPool();
   if (!unassigned.length) {
     addLog('Auto Schedule blocked: no Google Drive videos found.');
     return;
+  }
+
+  let baseTitlePool = Array.isArray(state.data?.settings?.titlePool)
+    ? [...state.data.settings.titlePool]
+    : String(state.data?.settings?.titlePool || '').split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+  if (!baseTitlePool.length) {
+    baseTitlePool = unassigned.map((v, idx) => v.title || v.original_file_name || v.name || `Video ${idx + 1}`);
+    addLog('Auto Schedule: Title list was empty, using Drive video names as titles.');
   }
 
   state.autoScheduleEnabled = true;

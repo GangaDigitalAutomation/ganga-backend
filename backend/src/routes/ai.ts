@@ -108,9 +108,6 @@ export function registerAiRoutes(app: App) {
       }
 
       const apiKey = String(process.env.GEMINI_API_KEY || "").trim();
-      if (!apiKey) {
-        return reply.status(400).send({ error: "GEMINI_API_KEY is not configured" });
-      }
 
       const prompt = `${SYSTEM_PROMPT}
 
@@ -123,14 +120,37 @@ ${message}
 ActionResult:
 ${JSON.stringify(actionResult, null, 2)}`;
 
-      const aiText = await callGemini(apiKey, prompt);
-
       const suggestions: string[] = [];
       const apiHealth = systemData?.apiHealth || {};
       if (apiHealth.youtube === "FAIL") suggestions.push("Reconnect YouTube");
       if (apiHealth.drive === "FAIL") suggestions.push("Connect Drive");
       if (Array.isArray(systemData?.errors) && systemData.errors.length) suggestions.push("Fix Schedule");
       if (!suggestions.length) suggestions.push("Start Automation");
+
+      if (!apiKey) {
+        const replyText = "GEMINI_API_KEY is not configured. AI chat is in fallback mode.";
+        await logAiEvent(app, "error", `[AI_CHAT] ${replyText}`);
+        return {
+          reply: replyText,
+          action: actionResult,
+          suggestions,
+          error: "GEMINI_API_KEY_NOT_CONFIGURED",
+        };
+      }
+
+      let aiText = "";
+      try {
+        aiText = await callGemini(apiKey, prompt);
+      } catch (error) {
+        const errText = error instanceof Error ? error.message : String(error);
+        await logAiEvent(app, "error", `[AI_CHAT] Gemini error: ${errText}`);
+        return {
+          reply: `AI service error: ${errText}`,
+          action: actionResult,
+          suggestions,
+          error: "AI_PROVIDER_ERROR",
+        };
+      }
 
       await logAiEvent(app, "info", `[AI_CHAT] ${message}`);
       return { reply: aiText, action: actionResult, suggestions };
