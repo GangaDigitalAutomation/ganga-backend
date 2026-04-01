@@ -33,6 +33,15 @@
     const connected = url.searchParams.get("channel_connected");
     if (!connected) return;
     console.log("[GDA] Channel connected redirect params:", Object.fromEntries(url.searchParams.entries()));
+    const connectedId = url.searchParams.get("channel_id");
+    if (connectedId) {
+      try {
+        localStorage.setItem("gda_channel_connected_id", connectedId);
+      } catch (_) {}
+    }
+    try {
+      localStorage.setItem("gda_oauth_params", JSON.stringify(Object.fromEntries(url.searchParams.entries())));
+    } catch (_) {}
     try {
       const current = await getState();
       emit("onState", current);
@@ -158,17 +167,28 @@
       return { settings: cache.automation_settings || {} };
     });
 
+    const debugResp = await request("/api/system/debug").catch((error) => {
+      errors.push(`Debug sync failed: ${error.message || error}`);
+      return cache.debug || { channels: [], logs: [], errors: [] };
+    });
+
     const settings = getSettings();
 
-    const channels = (channelsResp.channels || []).map((c) => ({
-      id: c.id,
-      channel_name: c.name,
-      channel_url: c.youtube_channel_url || "",
-      youtube_url: c.youtube_channel_url || "",
-      is_selected: settings.selectedChannels?.[c.id] !== false,
+    const channels = (channelsResp.channels || []).map((c) => {
+      const channelId = c.channelId || c.id;
+      return {
+        id: channelId,
+      channel_name: c.channelName || c.name,
+      channel_url: c.youtubeChannelUrl || c.youtube_channel_url || "",
+      youtube_url: c.youtubeChannelUrl || c.youtube_channel_url || "",
+      is_selected: settings.selectedChannels?.[channelId] !== false,
       token_status: c.status === "connected" ? "connected" : "disconnected",
       status: c.status,
-    }));
+      last_sync_time: c.lastSyncTime || null,
+      token_expiry: c.tokenExpiry || null,
+      reconnect_required: Boolean(c.reconnectRequired),
+      };
+    });
 
     const videos = (videosResp.videos || []).map((v) => ({
       id: v.id,
@@ -206,6 +226,17 @@
         slots: automationSettings.settings?.slots || [],
         automationSlots: automationSettings.settings?.automation_slots || [],
       },
+      debug: {
+        channels: debugResp.channels || [],
+        logs: debugResp.logs || [],
+        errors: debugResp.errors || [],
+      },
+      systemData: {
+        channels: debugResp.channels || [],
+        automationStatus: uploadStatus || {},
+        errors: debugResp.errors || [],
+        logs: debugResp.logs || [],
+      },
       stats: {
         total_channels: stats.total_channels || channels.length,
         total_videos: stats.total_videos || videos.length,
@@ -221,6 +252,7 @@
       upload_status: uploadStatus,
       content_settings: contentSettings.settings || {},
       automation_settings: automationSettings.settings || {},
+      debug: debugResp || {},
       stats: statePayload.stats,
       channels: statePayload.channels,
       videos: statePayload.videos,

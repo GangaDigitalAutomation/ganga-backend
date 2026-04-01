@@ -194,6 +194,18 @@ function formatTopTime(value) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function formatShortDateTime(value) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = String(date.getFullYear());
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${d}-${m}-${y} ${hh}:${mm}`;
+}
+
 function renderAutomationTopSection() {
   const startRow = document.getElementById('automation-top-start-row');
   const runningRow = document.getElementById('automation-top-running-row');
@@ -437,6 +449,11 @@ function renderChannels() {
     channelCountLabel.textContent = `Total Channels: ${channels.length}`;
   }
 
+  let highlightId = '';
+  try {
+    highlightId = localStorage.getItem('gda_channel_connected_id') || '';
+  } catch (_) {}
+
   channels.forEach((channel) => {
     const card = document.createElement('div');
     card.className = 'channel-card';
@@ -449,10 +466,17 @@ function renderChannels() {
       : '<div class="channel-avatar inline-placeholder" aria-hidden="true">YT</div>';
     const channelUrlHtml = channelUrl ? `<p class="channel-url" title="${safeChannelUrl}">${safeChannelUrl}</p>` : '';
 
-    const tokenConnected = channel.token_status === 'connected';
-    const tokenControlHtml = tokenConnected
-      ? '<span class="status-connected"><span class="status-dot"></span>Connected</span>'
-      : '<button class="secondary" data-action="token">Get Token</button>';
+    const tokenConnected = channel.token_status === 'connected' || channel.status === 'connected';
+    const reconnectRequired = Boolean(channel.reconnect_required);
+    const statusClass = reconnectRequired ? 'reconnect' : (tokenConnected ? 'connected' : 'disconnected');
+    const statusText = reconnectRequired ? 'Reconnect Required' : (tokenConnected ? 'Connected' : 'Disconnected');
+    const tokenControlHtml = reconnectRequired
+      ? '<button class="secondary" data-action="token">Reconnect</button>'
+      : tokenConnected
+        ? '<span class="status-connected"><span class="status-dot"></span>Connected</span>'
+        : '<button class="secondary" data-action="token">Get Token</button>';
+    const lastSync = formatShortDateTime(channel.last_sync_time);
+    const tokenExpiry = formatShortDateTime(channel.token_expiry);
 
     card.innerHTML = `
       <div class="channel-main">
@@ -462,6 +486,11 @@ function renderChannels() {
           <div class="channel-text">
             <h4 class="channel-name" title="${safeChannelName}">${safeChannelName}</h4>
             ${channelUrlHtml}
+            <div class="channel-meta">
+              <span class="status-badge ${statusClass}"><span class="status-dot-sm"></span>${statusText}</span>
+              <span class="short-path">Last Sync: ${escapeHtml(lastSync)}</span>
+              <span class="short-path">Token Expiry: ${escapeHtml(tokenExpiry)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -491,7 +520,36 @@ function renderChannels() {
     card.querySelector('[data-action="delete"]').addEventListener('click', () => window.api.deleteChannel(channel.id));
 
     list.appendChild(card);
+
+    if (highlightId && highlightId === String(channel.id || '')) {
+      card.classList.add('highlight');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      try {
+        localStorage.removeItem('gda_channel_connected_id');
+      } catch (_) {}
+    }
   });
+}
+
+function renderDebugPanel() {
+  const debug = state.data?.debug || {};
+  const channelsEl = document.getElementById('debug-channels');
+  const oauthEl = document.getElementById('debug-oauth');
+  const errorEl = document.getElementById('debug-error');
+  const logsEl = document.getElementById('debug-logs');
+  if (!channelsEl || !oauthEl || !errorEl || !logsEl) return;
+
+  channelsEl.textContent = JSON.stringify(debug.channels || [], null, 2);
+  let oauthParams = {};
+  try {
+    oauthParams = JSON.parse(localStorage.getItem('gda_oauth_params') || '{}');
+  } catch (_) {
+    oauthParams = {};
+  }
+  oauthEl.textContent = JSON.stringify(oauthParams, null, 2);
+  const lastError = Array.isArray(debug.errors) && debug.errors.length ? debug.errors[0] : '';
+  errorEl.textContent = lastError ? JSON.stringify(lastError, null, 2) : '--';
+  logsEl.textContent = JSON.stringify(debug.logs || [], null, 2);
 }
 
 function renderVideosPerDaySelector(current) {
@@ -1540,6 +1598,7 @@ async function loadState() {
   renderChannels();
   captureUploadedEvents(state.data);
   renderStats();
+  renderDebugPanel();
   renderAutoScheduleButton();
   renderScheduleChannelList();
   renderSlots();
@@ -1622,6 +1681,7 @@ window.api.onState((data) => {
   renderScheduleChannelList();
   renderSlots();
   renderStats();
+  renderDebugPanel();
   refreshAutomationStatus();
   refreshAutomationUpgradeStatus();
   if (isLibraryPageActive()) {
@@ -1907,6 +1967,11 @@ document.getElementById('stop-upload')?.addEventListener('click', async () => {
   } catch (error) {
     addLog(`Stop error: ${error.message}`);
   }
+});
+
+document.getElementById('refresh-channels')?.addEventListener('click', async () => {
+  addLog('Refreshing channels...');
+  await loadState();
 });
 
 document.getElementById('start-automation')?.addEventListener('click', async () => {

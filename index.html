@@ -88,6 +88,29 @@
             <h3>System Logs</h3>
             <div id="log-list"></div>
           </div>
+
+          <div class="glass-card logs" style="margin-top: 16px;">
+            <h3>System Debug</h3>
+            <p class="hint">Latest API state and OAuth details for troubleshooting.</p>
+            <div class="debug-grid" style="margin-top: 12px;">
+              <div>
+                <p class="label">Channels Response</p>
+                <pre id="debug-channels" class="debug-pre"></pre>
+              </div>
+              <div>
+                <p class="label">OAuth Params</p>
+                <pre id="debug-oauth" class="debug-pre"></pre>
+              </div>
+              <div>
+                <p class="label">Last Error</p>
+                <pre id="debug-error" class="debug-pre"></pre>
+              </div>
+              <div>
+                <p class="label">Recent Logs</p>
+                <pre id="debug-logs" class="debug-pre"></pre>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="page" id="page-library">
@@ -166,6 +189,7 @@
               <p class="section-count" id="channels-total-count">Total Channels: 0</p>
             </div>
             <div class="header-actions">
+              <button class="secondary" id="refresh-channels">Refresh Channels</button>
               <button class="primary" id="add-channel">Add Channel</button>
             </div>
           </div>

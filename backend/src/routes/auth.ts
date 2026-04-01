@@ -120,6 +120,12 @@ export function registerAuthRoutes(app: App) {
       }
 
       app.logger.info({ channelId, redirectUri }, "Starting channel OAuth");
+      await app.db.insert(schema.upload_logs).values({
+        channel_id: channelId,
+        level: "info",
+        message: "OAuth start initiated",
+        created_at: new Date().toISOString(),
+      });
 
       const oauth = new google.auth.OAuth2(channel.client_id, channel.client_secret, redirectUri);
       const url = oauth.generateAuthUrl({
@@ -216,6 +222,12 @@ export function registerAuthRoutes(app: App) {
           (error as any)?.message ||
           error;
         app.logger.error({ err: errPayload, channelId }, "Channel OAuth callback failed");
+        await app.db.insert(schema.upload_logs).values({
+          channel_id: channelId,
+          level: "error",
+          message: `OAuth callback failed: ${String(errPayload)}`,
+          created_at: new Date().toISOString(),
+        });
         return reply.status(400).type("text/html").send(`<h3>OAuth callback failed: ${String(errPayload)}</h3>`);
       }
     },

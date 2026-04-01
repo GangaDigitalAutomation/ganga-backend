@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 
@@ -80,6 +80,75 @@ export function registerChannelRoutes(app: App) {
     }
   });
 
+  function computeTokenHealth(channel: any) {
+    const expiry = channel.token_expiry ? new Date(channel.token_expiry) : null;
+    const now = new Date();
+    if (!channel.refresh_token && !channel.access_token) {
+      return { status: 'disconnected', health: 'missing', reconnectRequired: true };
+    }
+    if (expiry && expiry.getTime() < now.getTime()) {
+      return { status: 'disconnected', health: 'expired', reconnectRequired: true };
+    }
+    if (channel.status !== 'connected') {
+      return { status: 'disconnected', health: 'missing', reconnectRequired: true };
+    }
+    return { status: 'connected', health: 'healthy', reconnectRequired: false };
+  }
+
+  async function buildChannelSummaries() {
+    const channels = await app.db
+      .select()
+      .from(schema.channels)
+      .orderBy(desc(schema.channels.is_starred), desc(schema.channels.created_at));
+
+    const channelIds = channels.map((ch) => ch.id);
+    const logs = channelIds.length
+      ? await app.db
+        .select()
+        .from(schema.upload_logs)
+        .where(inArray(schema.upload_logs.channel_id, channelIds))
+        .orderBy(desc(schema.upload_logs.created_at))
+      : [];
+
+    const lastLogMap = new Map<string, string>();
+    for (const log of logs) {
+      if (!log.channel_id) continue;
+      if (!lastLogMap.has(log.channel_id)) {
+        lastLogMap.set(log.channel_id, log.created_at);
+      }
+    }
+
+    const summaries = channels.map((channel) => {
+      const health = computeTokenHealth(channel);
+      return {
+        channelId: channel.id,
+        channelName: channel.name,
+        status: health.status,
+        tokenExpiry: channel.token_expiry || null,
+        lastSyncTime: lastLogMap.get(channel.id) || channel.created_at,
+        reconnectRequired: health.reconnectRequired,
+        youtubeChannelUrl: channel.youtube_channel_url || channel.youtube_url || null,
+        youtubeChannelId: channel.youtube_channel_id || null,
+      };
+    });
+
+    const expiredIds = summaries
+      .filter((summary) => summary.reconnectRequired && summary.status !== 'connected')
+      .map((summary) => summary.channelId);
+
+    if (expiredIds.length) {
+      await app.db
+        .update(schema.channels)
+        .set({
+          status: 'disconnected',
+          token_status: 'expired',
+        })
+        .where(inArray(schema.channels.id, expiredIds));
+    }
+
+    return summaries;
+  }
+
   // GET /api/channels
   app.fastify.get('/api/channels', {
     schema: {
@@ -94,18 +163,14 @@ export function registerChannelRoutes(app: App) {
               items: {
                 type: 'object',
                 properties: {
-                  id: { type: 'string', format: 'uuid' },
-                  name: { type: 'string' },
-                  client_id: { type: 'string' },
-                  client_secret: { type: 'string' },
-                  access_token: { type: ['string', 'null'] },
-                  refresh_token: { type: ['string', 'null'] },
-                  token_expiry: { type: ['string', 'null'] },
-                  youtube_channel_id: { type: ['string', 'null'] },
-                  youtube_channel_url: { type: ['string', 'null'] },
-                  is_starred: { type: 'boolean' },
+                  channelId: { type: 'string', format: 'uuid' },
+                  channelName: { type: 'string' },
                   status: { type: 'string' },
-                  created_at: { type: 'string' },
+                  lastSyncTime: { type: ['string', 'null'] },
+                  tokenExpiry: { type: ['string', 'null'] },
+                  reconnectRequired: { type: 'boolean' },
+                  youtubeChannelId: { type: ['string', 'null'] },
+                  youtubeChannelUrl: { type: ['string', 'null'] },
                 },
               },
             },
@@ -115,12 +180,24 @@ export function registerChannelRoutes(app: App) {
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Fetching all channels');
-    const channels = await app.db
+    const summaries = await buildChannelSummaries();
+    app.logger.info({ count: summaries.length }, 'Channels fetched');
+    return { channels: summaries };
+  });
+
+  // GET /api/system/debug
+  app.fastify.get('/api/system/debug', async () => {
+    const channels = await buildChannelSummaries();
+    const logs = await app.db
       .select()
-      .from(schema.channels)
-      .orderBy(desc(schema.channels.is_starred), desc(schema.channels.created_at));
-    app.logger.info({ count: channels.length }, 'Channels fetched');
-    return { channels };
+      .from(schema.upload_logs)
+      .orderBy(desc(schema.upload_logs.created_at))
+      .limit(20);
+    return {
+      channels,
+      errors: [],
+      logs,
+    };
   });
 
   // POST /api/channels
