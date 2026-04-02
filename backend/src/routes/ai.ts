@@ -44,7 +44,7 @@ Never give generic answers.
 Always be specific to system data.`;
 
 async function callGemini(apiKey: string, prompt: string, systemData: any) {
-  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
+  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
   const response = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
