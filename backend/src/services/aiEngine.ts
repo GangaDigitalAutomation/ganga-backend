@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { App } from "../index.js";
 import { desc, eq } from "drizzle-orm";
 import * as schema from "../db/schema/schema.js";
@@ -10,6 +11,24 @@ type ActionResult = {
   message: string;
   data?: any;
 };
+
+export async function connectChannel(app: App, channelName: string, clientId: string, clientSecret: string): Promise<ActionResult> {
+  const newId = crypto.randomUUID();
+  await app.db.insert(schema.channels).values({
+    id: newId,
+    name: channelName || "Unnamed Channel",
+    client_id: clientId || "empty",
+    client_secret: clientSecret || "empty",
+    status: "disconnected",
+    is_starred: false,
+    created_at: new Date().toISOString(),
+  });
+  return {
+    action: "connectChannel",
+    success: true,
+    message: `Added channel "${channelName}". Please complete the Google OAuth process on the Dashboard to fully connect it.`,
+  };
+}
 
 export async function startAutomation(app: App): Promise<ActionResult> {
   const runtime = await setAutomationRunningDb(app, true);
@@ -83,5 +102,6 @@ export function detectIntent(message: string) {
   if (lower.includes("connect drive")) return "connectGoogleDrive";
   if (lower.includes("fix schedule")) return "fixSchedule";
   if (lower.includes("retry failed")) return "retryFailedUploads";
+  if (lower.includes("connect channel")) return "connectChannel";
   return "none";
 }

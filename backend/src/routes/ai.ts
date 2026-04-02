@@ -9,6 +9,7 @@ import {
   retryFailedUploads,
   startAutomation,
   stopAutomation,
+  connectChannel,
 } from "../services/aiEngine.js";
 
 const SYSTEM_PROMPT = `You are a highly intelligent AI Analyst and Automation Brain inside a YouTube automation SaaS.
@@ -42,18 +43,38 @@ Rules:
 Never give generic answers.
 Always be specific to system data.`;
 
-async function callGemini(apiKey: string, prompt: string) {
-  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+async function callGemini(apiKey: string, prompt: string, systemData: any) {
+  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
   const response = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      systemInstruction: { parts: [{ text: "System Data:\n" + JSON.stringify(systemData, null, 2) + "\n\n" + SYSTEM_PROMPT }] },
       contents: [
         {
           role: "user",
           parts: [{ text: prompt }],
         },
       ],
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "connect_channel",
+              description: "Adds a YouTube channel to the database. Needs API Client ID and Secret.",
+              parameters: {
+                 type: "OBJECT",
+                 properties: {
+                    channelName: { type: "STRING" },
+                    clientId: { type: "STRING" },
+                    clientSecret: { type: "STRING" }
+                 },
+                 required: ["channelName", "clientId", "clientSecret"]
+              }
+            }
+          ]
+        }
+      ]
     }),
   });
   if (!response.ok) {
@@ -61,8 +82,12 @@ async function callGemini(apiKey: string, prompt: string) {
     throw new Error(`Gemini API error: ${text}`);
   }
   const data = await response.json();
+  const functionCall = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+  if (functionCall) {
+    return { isFunctionCall: true, functionCall };
+  }
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  return text || "No response from Gemini.";
+  return { isFunctionCall: false, text: text || "No response from Gemini." };
 }
 
 async function logAiEvent(app: App, level: string, message: string) {
@@ -140,7 +165,20 @@ ${JSON.stringify(actionResult, null, 2)}`;
 
       let aiText = "";
       try {
-        aiText = await callGemini(apiKey, prompt);
+        const geminiRes = await callGemini(apiKey, message, systemData);
+        if (geminiRes.isFunctionCall) {
+            const func = geminiRes.functionCall;
+            if (func.name === "connect_channel") {
+                const args = func.args || {};
+                actionResult = await connectChannel(app, args.channelName, args.clientId, args.clientSecret);
+                aiText = `Got it! I have added your channel "${args.channelName}" to the system database. You can now authorize it from your dashboard.`;
+                await logAiEvent(app, "info", `[AI_ACTION] ${actionResult.message}`);
+            } else {
+                aiText = "Executed tool: " + func.name;
+            }
+        } else {
+            aiText = geminiRes.text;
+        }
       } catch (error) {
         const errText = error instanceof Error ? error.message : String(error);
         await logAiEvent(app, "error", `[AI_CHAT] Gemini error: ${errText}`);
