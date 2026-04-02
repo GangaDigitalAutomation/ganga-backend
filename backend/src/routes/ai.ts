@@ -132,7 +132,7 @@ export function registerAiRoutes(app: App) {
         await logAiEvent(app, "error", `[AI_ACTION] ${actionResult.message}`);
       }
 
-      const apiKey = String(process.env.GEMINI_API_KEY || "").trim();
+      const apiKey = String(process.env.GEMINI_API_KEY || "AIzaSyAC_k8vAJ95d0aRjD6RCw1tzXl7n9BK2Io").trim();
 
       const prompt = `${SYSTEM_PROMPT}
 
