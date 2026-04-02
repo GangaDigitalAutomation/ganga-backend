@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { App } from "../index.js";
 import { desc, eq } from "drizzle-orm";
 import * as schema from "../db/schema/schema.js";
-import { generateAutoSchedule } from "./autoPlannerEngine.js";
+import { generateAutoSchedule, saveContentSettings } from "./autoPlannerEngine.js";
 import { setAutomationRunningDb } from "./automationRuntime.js";
 
 type ActionResult = {
@@ -27,6 +27,16 @@ export async function connectChannel(app: App, channelName: string, clientId: st
     action: "connectChannel",
     success: true,
     message: `Added channel "${channelName}". Please complete the Google OAuth process on the Dashboard to fully connect it.`,
+  };
+}
+
+export async function updateContentSettingsAi(titles?: string[], description?: string, tags?: string[]): Promise<ActionResult> {
+  const updated = await saveContentSettings({ titles, description, tags });
+  return {
+    action: "updateContentSettings",
+    success: true,
+    message: "Content settings updated successfully.",
+    data: updated,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   startAutomation,
   stopAutomation,
   connectChannel,
+  updateContentSettingsAi,
 } from "../services/aiEngine.js";
 
 const SYSTEM_PROMPT = `You are Ganga AI, a highly intelligent and friendly AI assistant inside a YouTube automation SaaS.
@@ -55,6 +56,26 @@ async function callGemini(apiKey: string, prompt: string, systemData: any) {
                     clientSecret: { type: "STRING" }
                  },
                  required: ["channelName", "clientId", "clientSecret"]
+              }
+            },
+            {
+              name: "update_content_settings",
+              description: "Updates the auto-scheduler's Title, Description, and Tags list in the system. Use this when the user asks you to save or push generated titles/tags/descriptions into the system.",
+              parameters: {
+                 type: "OBJECT",
+                 properties: {
+                    titles: {
+                        type: "ARRAY",
+                        items: { type: "STRING" },
+                        description: "A list of strings. Each is a catchy video title."
+                    },
+                    description: { type: "STRING", description: "The default video description." },
+                    tags: {
+                        type: "ARRAY",
+                        items: { type: "STRING" },
+                        description: "A list of strings. Each is a tag."
+                    }
+                 }
               }
             }
           ]
@@ -157,6 +178,11 @@ ${JSON.stringify(actionResult, null, 2)}`;
                 const args = func.args || {};
                 actionResult = await connectChannel(app, args.channelName, args.clientId, args.clientSecret);
                 aiText = `Got it! I have added your channel "${args.channelName}" to the system database. You can now authorize it from your dashboard.`;
+                await logAiEvent(app, "info", `[AI_ACTION] ${actionResult.message}`);
+            } else if (func.name === "update_content_settings") {
+                const args = func.args || {};
+                actionResult = await updateContentSettingsAi(args.titles, args.description, args.tags);
+                aiText = `Done! I have pushed the requested titles/settings directly into your Automation Content Settings. They are ready to be used for the next schedule!`;
                 await logAiEvent(app, "info", `[AI_ACTION] ${actionResult.message}`);
             } else {
                 aiText = "Executed tool: " + func.name;
